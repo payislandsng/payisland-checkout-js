@@ -80,8 +80,10 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 .output
+
+# PayIsland checkout browser bundles are release artifacts.
+!dist/
 
 # Gatsby files
 .cache/

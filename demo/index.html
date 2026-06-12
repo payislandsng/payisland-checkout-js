@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PayIsland Checkout Demo</title>
+    <style>
+      body {
+        margin: 0;
+        color: #17202a;
+        background: #f5f8fb;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      main {
+        display: grid;
+        gap: 18px;
+        width: min(720px, calc(100% - 32px));
+        margin: 40px auto;
+      }
+      section {
+        display: grid;
+        gap: 14px;
+        padding: 20px;
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+        background: #fff;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+      input,
+      button {
+        min-height: 44px;
+        border-radius: 8px;
+        font: inherit;
+      }
+      input {
+        border: 1px solid #bcccdc;
+        padding: 0 12px;
+      }
+      button {
+        border: 0;
+        background: #0b7f70;
+        color: #fff;
+        cursor: pointer;
+        font-weight: 700;
+      }
+      pre {
+        min-height: 120px;
+        margin: 0;
+        overflow: auto;
+        padding: 12px;
+        border-radius: 8px;
+        background: #111827;
+        color: #e5e7eb;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>PayIsland Checkout Demo</h1>
+        <label>
+          Reference
+          <input id="reference" value="PIST_DEMO_000001" autocomplete="off" />
+        </label>
+        <button id="open" type="button">Open checkout</button>
+      </section>
+      <section>
+        <strong>Callbacks</strong>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script src="../dist/payisland-checkout.js"></script>
+    <script>
+      const log = document.querySelector("#log");
+      const reference = document.querySelector("#reference");
+
+      function write(event, payload) {
+        log.textContent += `${new Date().toLocaleTimeString()} ${event} ${JSON.stringify(payload || {}, null, 2)}\n`;
+      }
+
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async function (url, options) {
+        const currentReference = encodeURIComponent(reference.value.trim());
+
+        if (String(url).includes(`/pay/keys/${currentReference}`)) {
+          return new Response(
+            JSON.stringify({
+              reference: reference.value.trim(),
+              amount: 10000,
+              fee: 100,
+              total_amount: 10100,
+              currency: "NGN",
+              merchant: { name: "PayIsland Demo Store" },
+              customer: {
+                name: "Demo Customer",
+                email: "customer@example.com",
+              },
+              channels: ["bank-transfer", "redirect", "card"],
+              bank_transfer: {
+                account_number: "1234567890",
+                account_name: "PayIsland Demo",
+                bank_name: "Demo Bank",
+                expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+              },
+              authorization_url: "https://checkout.payislands.com",
+              poll_interval_ms: 3000,
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+                "x-checkout-token": "demo-token",
+              },
+            },
+          );
+        }
+
+        if (String(url).includes(`/transaction/verify/${currentReference}`)) {
+          return new Response(
+            JSON.stringify({ status: "pending", poll_interval_ms: 3000 }),
+            {
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        return originalFetch(url, options);
+      };
+
+      document.querySelector("#open").addEventListener("click", () => {
+        PayIslandCheckout.open({
+          reference: reference.value,
+          theme: {
+            merchantName: "PayIsland Demo Store",
+            primaryColor: "#0b7f70",
+          },
+          onSuccess: (transaction) => write("success", transaction),
+          onPending: (status) => write("pending", status),
+          onError: (error) => write("error", error),
+          onClose: () => write("close"),
+        });
+      });
+    </script>
+  </body>
+</html>

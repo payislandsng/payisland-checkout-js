@@ -1,0 +1,46 @@
+{
+  "name": "@payisland/checkout-js",
+  "version": "0.1.0",
+  "description": "Browser JavaScript inline checkout SDK for PayIsland server-initialized payments.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/payislandsng/payisland-checkout-js.git"
+  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/types/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./payisland-checkout.js": "./dist/payisland-checkout.js",
+    "./payisland-checkout.min.js": "./dist/payisland-checkout.min.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "payisland",
+    "checkout",
+    "payments",
+    "sdk"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "esbuild": "^0.28.1",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.8"
+  }
+}
