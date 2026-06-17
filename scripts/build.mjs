@@ -7,6 +7,9 @@ await rm("dist", { force: true, recursive: true });
 const common = {
   entryPoints: ["src/index.ts"],
   bundle: true,
+  loader: {
+    ".png": "dataurl",
+  },
   platform: "browser",
   target: ["es2020"],
   sourcemap: true,

@@ -1,6 +1,7 @@
 import { getBankTransferFields } from "./channels/bank-transfer";
 import { cardUnavailableMessage } from "./channels/card-placeholder";
 import { openRedirect } from "./channels/redirect";
+import { payIslandLogoDark, payIslandLogoLight } from "./brand-assets";
 import { styles } from "./styles";
 import type {
   BootstrapPayload,
@@ -18,7 +19,6 @@ import {
   extractMerchant,
   extractTransaction,
   formatMoney,
-  logoUrl,
   maskEmail,
   merchantDisplayName,
   safeUrl,
@@ -80,8 +80,10 @@ export class CheckoutModal {
 
   renderLoading(): void {
     this.setBody(`
-      <div class="pi-state" role="status" aria-live="polite">
+      <div class="pi-state pi-state-loading" role="status" aria-live="polite">
+        <img class="pi-state-logo" src="${escapeAttr(payIslandLogoDark)}" alt="" />
         <div class="pi-spinner" aria-hidden="true"></div>
+        <h3 class="pi-state-title">Preparing checkout</h3>
         <p class="pi-message">Preparing secure checkout...</p>
       </div>
     `);
@@ -94,8 +96,9 @@ export class CheckoutModal {
   renderError(error: CheckoutErrorPayload, retry = true): void {
     this.stopCountdown();
     this.setBody(`
-      <div class="pi-state" role="alert">
+      <div class="pi-state pi-state-error" role="alert">
         <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
+        <h3 class="pi-state-title">Checkout unavailable</h3>
         <p class="pi-message">${escapeHtml(error.message)}</p>
         ${retry ? '<button class="pi-secondary" type="button" data-action="retry">Retry</button>' : ""}
       </div>
@@ -144,8 +147,9 @@ export class CheckoutModal {
 
   renderPending(payload?: VerificationPayload): void {
     this.setBody(`
-      <div class="pi-state" role="status" aria-live="polite">
+      <div class="pi-state pi-state-pending" role="status" aria-live="polite">
         <div class="pi-spinner" aria-hidden="true"></div>
+        <h3 class="pi-state-title">Confirming payment</h3>
         <p class="pi-message">Payment is pending. We are checking for confirmation.</p>
         ${payload?.status ? `<p class="pi-subtitle">Status: ${escapeHtml(payload.status)}</p>` : ""}
       </div>
@@ -155,8 +159,9 @@ export class CheckoutModal {
   renderSuccess(): void {
     this.stopCountdown();
     this.setBody(`
-      <div class="pi-state" role="status" aria-live="polite">
+      <div class="pi-state pi-state-success" role="status" aria-live="polite">
         <div class="pi-badge pi-badge-success" aria-hidden="true">✓</div>
+        <h3 class="pi-state-title">Payment successful</h3>
         <p class="pi-message">Payment successful.</p>
       </div>
     `);
@@ -165,8 +170,9 @@ export class CheckoutModal {
   renderFailure(message: string): void {
     this.stopCountdown();
     this.setBody(`
-      <div class="pi-state" role="alert">
+      <div class="pi-state pi-state-error" role="alert">
         <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
+        <h3 class="pi-state-title">Payment failed</h3>
         <p class="pi-message">${escapeHtml(message)}</p>
       </div>
     `);
@@ -175,8 +181,9 @@ export class CheckoutModal {
   renderExpired(): void {
     this.stopCountdown();
     this.setBody(`
-      <div class="pi-state" role="alert">
-        <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
+      <div class="pi-state pi-state-expired" role="alert">
+        <div class="pi-badge pi-badge-warning" aria-hidden="true">!</div>
+        <h3 class="pi-state-title">Checkout expired</h3>
         <p class="pi-message">This checkout has expired. Please start a new payment.</p>
       </div>
     `);
@@ -195,7 +202,7 @@ export class CheckoutModal {
   private renderShell(): void {
     const merchantName =
       this.options.theme.merchantName ?? "PayIsland Checkout";
-    const logo = this.options.theme.logoUrl;
+    const logo = this.options.theme.logoUrl ?? payIslandLogoDark;
     const wrapperClass = this.inline ? "pi-inline" : "pi-overlay";
 
     this.root.innerHTML = `
@@ -203,21 +210,27 @@ export class CheckoutModal {
       <div class="${wrapperClass}" data-shell>
         <section class="pi-modal" role="dialog" aria-modal="${this.inline ? "false" : "true"}" aria-labelledby="pi-title">
           <header class="pi-header">
-            <div class="pi-brand">
-              ${
-                logo
-                  ? `<img class="pi-logo" src="${escapeAttr(logo)}" alt="" />`
-                  : `<div class="pi-logo-fallback" aria-hidden="true">PI</div>`
-              }
-              <div>
+            <div class="pi-header-main">
+              <div class="pi-logo-frame">
+                <img class="pi-logo" src="${escapeAttr(logo)}" alt="" />
+              </div>
+              <div class="pi-heading">
+                <p class="pi-eyebrow">Secure checkout</p>
                 <h2 class="pi-title" id="pi-title">${escapeHtml(merchantName)}</h2>
-                <p class="pi-subtitle">Secure PayIsland checkout</p>
+                <p class="pi-subtitle">Protected by PayIsland</p>
               </div>
             </div>
-            <button class="pi-close" type="button" aria-label="Close checkout" data-action="close">×</button>
+            <button class="pi-close" type="button" aria-label="Close checkout" data-action="close">
+              <span aria-hidden="true">×</span>
+            </button>
           </header>
           <main class="pi-body" data-body></main>
           <footer class="pi-footer">
+            <div class="pi-secured">
+              <span>Secured by</span>
+              <img class="pi-secured-logo" src="${escapeAttr(payIslandLogoLight)}" alt="PayIsland" />
+              <strong>PayIsland</strong>
+            </div>
             <button class="pi-secondary" type="button" data-action="close">Cancel</button>
           </footer>
         </section>
@@ -263,26 +276,29 @@ export class CheckoutModal {
     const fee = transaction.fee ?? payload.fee;
     const customerName = customerDisplayName(customer);
     const customerEmail = maskEmail(customer.email);
-    const merchantLogo = logoUrl(merchant, this.options.theme.logoUrl);
+    const merchantName = merchantDisplayName(
+      merchant,
+      this.options.theme.merchantName,
+    );
+    const reference = transaction.reference ?? payload.reference ?? "";
+    const totalLabel = formatMoney(total ?? amount, currency);
 
     return `
       <section class="pi-summary" aria-label="Transaction summary">
-        <div class="pi-brand">
-          ${
-            merchantLogo
-              ? `<img class="pi-logo" src="${escapeAttr(merchantLogo)}" alt="" />`
-              : `<div class="pi-logo-fallback" aria-hidden="true">PI</div>`
-          }
+        <div class="pi-summary-hero">
           <div>
-            <p class="pi-title">${escapeHtml(merchantDisplayName(merchant, this.options.theme.merchantName))}</p>
-            <p class="pi-subtitle">${escapeHtml(transaction.reference ?? payload.reference ?? "")}</p>
+            <span class="pi-label">Total due</span>
+            <strong>${escapeHtml(totalLabel)}</strong>
           </div>
+          <p>${escapeHtml(merchantName)}</p>
         </div>
-        ${customerName ? `<div class="pi-row"><span>Customer</span><strong>${escapeHtml(customerName)}</strong></div>` : ""}
-        ${customerEmail ? `<div class="pi-row"><span>Email</span><strong>${escapeHtml(customerEmail)}</strong></div>` : ""}
-        <div class="pi-row"><span>Amount</span><strong>${escapeHtml(formatMoney(amount, currency))}</strong></div>
-        <div class="pi-row"><span>Fee</span><strong>${escapeHtml(formatMoney(fee, currency))}</strong></div>
-        <div class="pi-row pi-total"><span>Total</span><strong>${escapeHtml(formatMoney(total ?? amount, currency))}</strong></div>
+        <div class="pi-summary-grid">
+          <div class="pi-row"><span>Amount</span><strong>${escapeHtml(formatMoney(amount, currency))}</strong></div>
+          <div class="pi-row"><span>Fee</span><strong>${escapeHtml(formatMoney(fee, currency))}</strong></div>
+          ${customerName ? `<div class="pi-row"><span>Customer</span><strong>${escapeHtml(customerName)}</strong></div>` : ""}
+          ${customerEmail ? `<div class="pi-row"><span>Email</span><strong>${escapeHtml(customerEmail)}</strong></div>` : ""}
+          ${reference ? `<div class="pi-row pi-reference"><span>Reference</span><strong>${escapeHtml(reference)}</strong></div>` : ""}
+        </div>
       </section>
     `;
   }
@@ -321,26 +337,44 @@ export class CheckoutModal {
   ): string {
     if (channel === "bank-transfer") {
       const bank = getBankTransferFields(extractBankTransfer(payload));
+      const transaction = extractTransaction(payload);
+      const currency = transaction.currency ?? payload.currency ?? "NGN";
+      const total =
+        transaction.total_amount ??
+        transaction.totalAmount ??
+        payload.total_amount ??
+        payload.totalAmount ??
+        transaction.amount ??
+        payload.amount;
       if (!bank)
         return `<div class="pi-unavailable">Bank transfer details are not available yet.</div>`;
 
       return `
         <section class="pi-bank-box" aria-label="Bank transfer details">
-          <div class="pi-row"><span>Bank</span><strong>${escapeHtml(bank.bankName)}</strong></div>
-          <div class="pi-row"><span>Account name</span><strong>${escapeHtml(bank.accountName)}</strong></div>
-          <div class="pi-account">
-            <span class="pi-account-number">${escapeHtml(bank.accountNumber)}</span>
-            <button class="pi-copy" type="button" data-copy="${escapeAttr(bank.accountNumber)}">Copy</button>
+          <div class="pi-bank-intro">
+            <span class="pi-label">Bank transfer</span>
+            <strong>Transfer exactly ${escapeHtml(formatMoney(total, currency))}</strong>
           </div>
-          <p class="pi-message">Transfer the exact amount, then keep this checkout open while we confirm payment.</p>
+          <div class="pi-account">
+            <span>Account number</span>
+            <strong class="pi-account-number">${escapeHtml(bank.accountNumber)}</strong>
+            <button class="pi-copy" type="button" data-copy="${escapeAttr(bank.accountNumber)}">Copy number</button>
+          </div>
+          <div class="pi-bank-grid">
+            <div class="pi-detail"><span>Bank</span><strong>${escapeHtml(bank.bankName)}</strong></div>
+            <div class="pi-detail"><span>Account name</span><strong>${escapeHtml(bank.accountName)}</strong></div>
+          </div>
           ${bank.expiresAt ? `<p class="pi-subtitle" data-countdown="${escapeAttr(bank.expiresAt)}"></p>` : ""}
           <div class="pi-status" role="status" aria-live="polite">
             <span>Current status</span>
             <strong>${escapeHtml(labelForStatus(status))}</strong>
           </div>
-          <button class="pi-secondary pi-refresh" type="button" data-action="refresh-status" ${this.refreshingStatus ? "disabled" : ""}>
-            ${this.refreshingStatus ? "Checking..." : "Refresh status"}
-          </button>
+          <div class="pi-bank-actions">
+            <button class="pi-secondary pi-refresh" type="button" data-action="refresh-status" ${this.refreshingStatus ? "disabled" : ""}>
+              ${this.refreshingStatus ? "Checking..." : "Refresh status"}
+            </button>
+          </div>
+          <p class="pi-message">Keep this checkout open while we confirm your payment.</p>
         </section>
       `;
     }
@@ -348,8 +382,12 @@ export class CheckoutModal {
     if (channel === "redirect" || safeUrl(extractAuthorizationUrl(payload))) {
       const url = safeUrl(extractAuthorizationUrl(payload));
       return `
-        <section class="pi-panel">
-          <p class="pi-message">Continue to PayIsland to complete this payment securely.</p>
+        <section class="pi-redirect-card">
+          <div class="pi-redirect-icon" aria-hidden="true">↗</div>
+          <div>
+            <h3 class="pi-panel-title">Continue securely</h3>
+            <p class="pi-message">You will continue to a secure PayIsland payment page. Keep this checkout open while we confirm the payment.</p>
+          </div>
           <button class="pi-primary" type="button" data-redirect="${escapeAttr(url ?? "")}" ${url ? "" : "disabled"}>
             Continue to payment
           </button>

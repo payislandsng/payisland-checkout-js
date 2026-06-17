@@ -92,7 +92,9 @@ POST /api/v1/transactions/gateway/transaction/verify/:reference
 GET /api/v1/transactions/gateway/transaction/verify-bank-transfer/:reference
 ```
 
-Terminal success statuses are `paid`, `successful`, and `success`. Terminal failure statuses are `failed`, `canceled`, `cancelled`, `reversed`, and `expired`.
+Terminal success statuses are `paid`, `successful`, and `success`. Terminal failure statuses are `failed`, `canceled`, `cancelled`, and `reversed`. Expired checkouts are shown as a distinct terminal expired state.
+
+For best display, use a square or near-square merchant logo with a transparent or solid background, ideally at least 64×64 px.
 
 ## Channel Behavior
 
