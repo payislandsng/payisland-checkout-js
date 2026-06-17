@@ -12,6 +12,7 @@ export type NormalizedStatus =
   | "pending"
   | "success"
   | "failed"
+  | "expired"
   | "closed";
 
 export interface CheckoutTheme {

@@ -16,8 +16,8 @@ const TERMINAL_FAILURE = new Set([
   "canceled",
   "cancelled",
   "reversed",
-  "expired",
 ]);
+const EXPIRED = new Set(["expired"]);
 const PENDING = new Set(["pending", "unpaid", "processing", "initiated"]);
 
 export class CheckoutError extends Error {
@@ -90,11 +90,12 @@ export function getRequestId(headers: Headers): string | undefined {
 
 export function normalizeStatus(
   raw: unknown,
-): "success" | "failed" | "pending" | "unknown" {
+): "success" | "failed" | "expired" | "pending" | "unknown" {
   const status = String(raw ?? "")
     .trim()
     .toLowerCase();
   if (TERMINAL_SUCCESS.has(status)) return "success";
+  if (EXPIRED.has(status)) return "expired";
   if (TERMINAL_FAILURE.has(status)) return "failed";
   if (PENDING.has(status)) return "pending";
   return "unknown";
@@ -216,12 +217,19 @@ export function safeUrl(value?: string): string | undefined {
   if (!value) return undefined;
   try {
     const url = new URL(value);
-    if (url.protocol === "https:" || url.protocol === "http:")
+    if (url.protocol === "https:") return url.toString();
+    if (url.protocol === "http:" && isLocalHost(url.hostname))
       return url.toString();
   } catch {
     return undefined;
   }
   return undefined;
+}
+
+function isLocalHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
 }
 
 export function isElement(value: unknown): value is HTMLElement {

@@ -6,6 +6,7 @@ export type CheckoutEvent =
   | { type: "PENDING" }
   | { type: "SUCCESS" }
   | { type: "FAIL" }
+  | { type: "EXPIRE" }
   | { type: "CLOSE" };
 
 const transitions: Record<
@@ -18,12 +19,14 @@ const transitions: Record<
     PENDING: "pending",
     SUCCESS: "success",
     FAIL: "failed",
+    EXPIRE: "expired",
     CLOSE: "closed",
   },
   ready: {
     PENDING: "pending",
     SUCCESS: "success",
     FAIL: "failed",
+    EXPIRE: "expired",
     CLOSE: "closed",
   },
   pending: {
@@ -31,10 +34,12 @@ const transitions: Record<
     PENDING: "pending",
     SUCCESS: "success",
     FAIL: "failed",
+    EXPIRE: "expired",
     CLOSE: "closed",
   },
   success: { CLOSE: "closed" },
   failed: { CLOSE: "closed" },
+  expired: { CLOSE: "closed" },
   closed: {},
 };
 
@@ -55,6 +60,7 @@ export class CheckoutStateMachine {
     return (
       this.context.status === "success" ||
       this.context.status === "failed" ||
+      this.context.status === "expired" ||
       this.context.status === "closed"
     );
   }

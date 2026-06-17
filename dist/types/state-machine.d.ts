@@ -10,6 +10,8 @@ export type CheckoutEvent = {
 } | {
     type: "FAIL";
 } | {
+    type: "EXPIRE";
+} | {
     type: "CLOSE";
 };
 export declare class CheckoutStateMachine {

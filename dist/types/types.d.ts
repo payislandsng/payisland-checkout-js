@@ -1,5 +1,5 @@
 export type PaymentChannel = "card" | "bank-transfer" | "mono" | "redirect" | string;
-export type NormalizedStatus = "idle" | "loading" | "ready" | "pending" | "success" | "failed" | "closed";
+export type NormalizedStatus = "idle" | "loading" | "ready" | "pending" | "success" | "failed" | "expired" | "closed";
 export interface CheckoutTheme {
     primaryColor?: string;
     logoUrl?: string;

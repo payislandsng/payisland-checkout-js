@@ -21,6 +21,7 @@ import {
   logoUrl,
   maskEmail,
   merchantDisplayName,
+  safeUrl,
 } from "./utils";
 
 type CloseReason = "user" | "programmatic";
@@ -31,6 +32,7 @@ interface ModalOptions {
   onClose: (reason: CloseReason) => void;
   onRetry: () => void;
   onChannelSelected: (channel: PaymentChannel) => void;
+  onRefreshStatus: () => void;
 }
 
 const focusableSelector = [
@@ -50,6 +52,7 @@ export class CheckoutModal {
   private countdownTimer?: number;
   private previousActiveElement?: Element | null;
   private inline = false;
+  private refreshingStatus = false;
 
   constructor(options: ModalOptions) {
     this.options = options;
@@ -84,13 +87,17 @@ export class CheckoutModal {
     `);
   }
 
-  renderError(error: CheckoutErrorPayload): void {
+  getSelectedChannel(): PaymentChannel | undefined {
+    return this.selectedChannel;
+  }
+
+  renderError(error: CheckoutErrorPayload, retry = true): void {
     this.stopCountdown();
     this.setBody(`
       <div class="pi-state" role="alert">
         <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
         <p class="pi-message">${escapeHtml(error.message)}</p>
-        <button class="pi-secondary" type="button" data-action="retry">Retry</button>
+        ${retry ? '<button class="pi-secondary" type="button" data-action="retry">Retry</button>' : ""}
       </div>
     `);
   }
@@ -98,11 +105,25 @@ export class CheckoutModal {
   renderCheckout(
     payload: BootstrapPayload,
     allowedChannels?: PaymentChannel[],
-  ): void {
+    status?: string,
+  ): boolean {
     const channels = this.filterChannels(
       extractChannels(payload),
       allowedChannels,
+      payload,
     );
+    if (channels.length === 0) {
+      this.selectedChannel = undefined;
+      this.renderError(
+        {
+          code: "no_available_channels",
+          message: "No available payment channels for this checkout.",
+        },
+        false,
+      );
+      return false;
+    }
+
     this.selectedChannel =
       this.selectedChannel && channels.includes(this.selectedChannel)
         ? this.selectedChannel
@@ -113,11 +134,12 @@ export class CheckoutModal {
       <div class="pi-stack">
         ${this.renderSummary(payload)}
         ${this.renderTabs(channels, payload)}
-        <div class="pi-panel">${this.renderChannel(payload, this.selectedChannel)}</div>
+        <div class="pi-panel">${this.renderChannel(payload, this.selectedChannel, status)}</div>
       </div>
     `);
 
     this.startCountdown(payload);
+    return true;
   }
 
   renderPending(payload?: VerificationPayload): void {
@@ -148,6 +170,26 @@ export class CheckoutModal {
         <p class="pi-message">${escapeHtml(message)}</p>
       </div>
     `);
+  }
+
+  renderExpired(): void {
+    this.stopCountdown();
+    this.setBody(`
+      <div class="pi-state" role="alert">
+        <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
+        <p class="pi-message">This checkout has expired. Please start a new payment.</p>
+      </div>
+    `);
+  }
+
+  setStatusRefreshing(refreshing: boolean): void {
+    this.refreshingStatus = refreshing;
+    const button = this.root.querySelector<HTMLButtonElement>(
+      '[data-action="refresh-status"]',
+    );
+    if (!button) return;
+    button.disabled = refreshing;
+    button.textContent = refreshing ? "Checking..." : "Refresh status";
   }
 
   private renderShell(): void {
@@ -275,6 +317,7 @@ export class CheckoutModal {
   private renderChannel(
     payload: BootstrapPayload,
     channel?: PaymentChannel,
+    status?: string,
   ): string {
     if (channel === "bank-transfer") {
       const bank = getBankTransferFields(extractBankTransfer(payload));
@@ -291,12 +334,19 @@ export class CheckoutModal {
           </div>
           <p class="pi-message">Transfer the exact amount, then keep this checkout open while we confirm payment.</p>
           ${bank.expiresAt ? `<p class="pi-subtitle" data-countdown="${escapeAttr(bank.expiresAt)}"></p>` : ""}
+          <div class="pi-status" role="status" aria-live="polite">
+            <span>Current status</span>
+            <strong>${escapeHtml(labelForStatus(status))}</strong>
+          </div>
+          <button class="pi-secondary pi-refresh" type="button" data-action="refresh-status" ${this.refreshingStatus ? "disabled" : ""}>
+            ${this.refreshingStatus ? "Checking..." : "Refresh status"}
+          </button>
         </section>
       `;
     }
 
-    if (channel === "redirect" || extractAuthorizationUrl(payload)) {
-      const url = extractAuthorizationUrl(payload);
+    if (channel === "redirect" || safeUrl(extractAuthorizationUrl(payload))) {
+      const url = safeUrl(extractAuthorizationUrl(payload));
       return `
         <section class="pi-panel">
           <p class="pi-message">Continue to PayIsland to complete this payment securely.</p>
@@ -347,14 +397,17 @@ export class CheckoutModal {
   private filterChannels(
     channels: PaymentChannel[],
     allowedChannels?: PaymentChannel[],
+    payload?: BootstrapPayload,
   ): PaymentChannel[] {
     const unique = [...new Set(channels)];
-    const filtered = allowedChannels?.length
-      ? unique.filter((channel) => allowedChannels.includes(channel))
-      : unique;
-    return filtered.length > 0
-      ? filtered
-      : ["bank-transfer", "redirect", "card"];
+    if (allowedChannels?.length) {
+      return unique.filter(
+        (channel) =>
+          allowedChannels.includes(channel) &&
+          (payload ? this.isSupported(channel, payload) : true),
+      );
+    }
+    return unique.length > 0 ? unique : ["bank-transfer", "redirect", "card"];
   }
 
   private isSupported(
@@ -364,7 +417,7 @@ export class CheckoutModal {
     if (channel === "bank-transfer")
       return Boolean(extractBankTransfer(payload));
     if (channel === "redirect")
-      return Boolean(extractAuthorizationUrl(payload));
+      return Boolean(safeUrl(extractAuthorizationUrl(payload)));
     return channel === "card" ? false : false;
   }
 
@@ -381,6 +434,14 @@ export class CheckoutModal {
     const retry = target.closest<HTMLElement>('[data-action="retry"]');
     if (retry) {
       this.options.onRetry();
+      return;
+    }
+
+    const refreshStatus = target.closest<HTMLElement>(
+      '[data-action="refresh-status"]',
+    );
+    if (refreshStatus) {
+      this.options.onRefreshStatus();
       return;
     }
 
@@ -451,6 +512,13 @@ function labelForChannel(channel: PaymentChannel): string {
     mono: "Mono",
   };
   return labels[channel] ?? String(channel);
+}
+
+function labelForStatus(status?: string): string {
+  if (!status) return "Pending confirmation";
+  const normalized = String(status).trim();
+  if (!normalized) return "Pending confirmation";
+  return normalized.replace(/[-_]+/g, " ");
 }
 
 function escapeHtml(value: unknown): string {

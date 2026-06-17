@@ -33,9 +33,9 @@ var PayIslandCheckout = (() => {
     "failed",
     "canceled",
     "cancelled",
-    "reversed",
-    "expired"
+    "reversed"
   ]);
+  var EXPIRED = /* @__PURE__ */ new Set(["expired"]);
   var PENDING = /* @__PURE__ */ new Set(["pending", "unpaid", "processing", "initiated"]);
   var CheckoutError = class extends Error {
     constructor(payload) {
@@ -88,6 +88,7 @@ var PayIslandCheckout = (() => {
   function normalizeStatus(raw) {
     const status = String(raw ?? "").trim().toLowerCase();
     if (TERMINAL_SUCCESS.has(status)) return "success";
+    if (EXPIRED.has(status)) return "expired";
     if (TERMINAL_FAILURE.has(status)) return "failed";
     if (PENDING.has(status)) return "pending";
     return "unknown";
@@ -167,12 +168,16 @@ var PayIslandCheckout = (() => {
     if (!value) return void 0;
     try {
       const url = new URL(value);
-      if (url.protocol === "https:" || url.protocol === "http:")
+      if (url.protocol === "https:") return url.toString();
+      if (url.protocol === "http:" && isLocalHost(url.hostname))
         return url.toString();
     } catch {
       return void 0;
     }
     return void 0;
+  }
+  function isLocalHost(hostname) {
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
   }
   function friendlyApiError(status, requestId) {
     if (status === 404) {
@@ -506,6 +511,7 @@ input {
   font-size: 22px;
   font-weight: 750;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 .pi-copy,
 .pi-primary,
@@ -537,6 +543,30 @@ input {
   background: #fff;
   color: var(--pi-text);
   padding: 0 14px;
+}
+.pi-secondary:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.pi-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--pi-soft);
+  color: var(--pi-muted);
+  font-size: 13px;
+}
+.pi-status strong {
+  color: var(--pi-text);
+  font-weight: 700;
+  text-align: right;
+  text-transform: capitalize;
+}
+.pi-refresh {
+  width: 100%;
 }
 .pi-state {
   display: grid;
@@ -649,6 +679,7 @@ input {
   var CheckoutModal = class {
     constructor(options) {
       this.inline = false;
+      this.refreshingStatus = false;
       this.options = options;
       this.host = document.createElement("div");
       this.host.setAttribute("data-payisland-checkout", "");
@@ -677,30 +708,46 @@ input {
       </div>
     `);
     }
-    renderError(error) {
+    getSelectedChannel() {
+      return this.selectedChannel;
+    }
+    renderError(error, retry = true) {
       this.stopCountdown();
       this.setBody(`
       <div class="pi-state" role="alert">
         <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
         <p class="pi-message">${escapeHtml(error.message)}</p>
-        <button class="pi-secondary" type="button" data-action="retry">Retry</button>
+        ${retry ? '<button class="pi-secondary" type="button" data-action="retry">Retry</button>' : ""}
       </div>
     `);
     }
-    renderCheckout(payload, allowedChannels) {
+    renderCheckout(payload, allowedChannels, status) {
       const channels = this.filterChannels(
         extractChannels(payload),
-        allowedChannels
+        allowedChannels,
+        payload
       );
+      if (channels.length === 0) {
+        this.selectedChannel = void 0;
+        this.renderError(
+          {
+            code: "no_available_channels",
+            message: "No available payment channels for this checkout."
+          },
+          false
+        );
+        return false;
+      }
       this.selectedChannel = this.selectedChannel && channels.includes(this.selectedChannel) ? this.selectedChannel : channels.find((channel) => this.isSupported(channel, payload)) ?? channels[0];
       this.setBody(`
       <div class="pi-stack">
         ${this.renderSummary(payload)}
         ${this.renderTabs(channels, payload)}
-        <div class="pi-panel">${this.renderChannel(payload, this.selectedChannel)}</div>
+        <div class="pi-panel">${this.renderChannel(payload, this.selectedChannel, status)}</div>
       </div>
     `);
       this.startCountdown(payload);
+      return true;
     }
     renderPending(payload) {
       this.setBody(`
@@ -728,6 +775,24 @@ input {
         <p class="pi-message">${escapeHtml(message)}</p>
       </div>
     `);
+    }
+    renderExpired() {
+      this.stopCountdown();
+      this.setBody(`
+      <div class="pi-state" role="alert">
+        <div class="pi-badge pi-badge-error" aria-hidden="true">!</div>
+        <p class="pi-message">This checkout has expired. Please start a new payment.</p>
+      </div>
+    `);
+    }
+    setStatusRefreshing(refreshing) {
+      this.refreshingStatus = refreshing;
+      const button = this.root.querySelector(
+        '[data-action="refresh-status"]'
+      );
+      if (!button) return;
+      button.disabled = refreshing;
+      button.textContent = refreshing ? "Checking..." : "Refresh status";
     }
     renderShell() {
       const merchantName = this.options.theme.merchantName ?? "PayIsland Checkout";
@@ -823,7 +888,7 @@ input {
       </div>
     `;
     }
-    renderChannel(payload, channel) {
+    renderChannel(payload, channel, status) {
       if (channel === "bank-transfer") {
         const bank = getBankTransferFields(extractBankTransfer(payload));
         if (!bank)
@@ -838,11 +903,18 @@ input {
           </div>
           <p class="pi-message">Transfer the exact amount, then keep this checkout open while we confirm payment.</p>
           ${bank.expiresAt ? `<p class="pi-subtitle" data-countdown="${escapeAttr(bank.expiresAt)}"></p>` : ""}
+          <div class="pi-status" role="status" aria-live="polite">
+            <span>Current status</span>
+            <strong>${escapeHtml(labelForStatus(status))}</strong>
+          </div>
+          <button class="pi-secondary pi-refresh" type="button" data-action="refresh-status" ${this.refreshingStatus ? "disabled" : ""}>
+            ${this.refreshingStatus ? "Checking..." : "Refresh status"}
+          </button>
         </section>
       `;
       }
-      if (channel === "redirect" || extractAuthorizationUrl(payload)) {
-        const url = extractAuthorizationUrl(payload);
+      if (channel === "redirect" || safeUrl(extractAuthorizationUrl(payload))) {
+        const url = safeUrl(extractAuthorizationUrl(payload));
         return `
         <section class="pi-panel">
           <p class="pi-message">Continue to PayIsland to complete this payment securely.</p>
@@ -879,16 +951,20 @@ input {
         this.countdownTimer = void 0;
       }
     }
-    filterChannels(channels, allowedChannels) {
+    filterChannels(channels, allowedChannels, payload) {
       const unique = [...new Set(channels)];
-      const filtered = allowedChannels?.length ? unique.filter((channel) => allowedChannels.includes(channel)) : unique;
-      return filtered.length > 0 ? filtered : ["bank-transfer", "redirect", "card"];
+      if (allowedChannels?.length) {
+        return unique.filter(
+          (channel) => allowedChannels.includes(channel) && (payload ? this.isSupported(channel, payload) : true)
+        );
+      }
+      return unique.length > 0 ? unique : ["bank-transfer", "redirect", "card"];
     }
     isSupported(channel, payload) {
       if (channel === "bank-transfer")
         return Boolean(extractBankTransfer(payload));
       if (channel === "redirect")
-        return Boolean(extractAuthorizationUrl(payload));
+        return Boolean(safeUrl(extractAuthorizationUrl(payload)));
       return channel === "card" ? false : false;
     }
     handleClick(event) {
@@ -902,6 +978,13 @@ input {
       const retry = target.closest('[data-action="retry"]');
       if (retry) {
         this.options.onRetry();
+        return;
+      }
+      const refreshStatus = target.closest(
+        '[data-action="refresh-status"]'
+      );
+      if (refreshStatus) {
+        this.options.onRefreshStatus();
         return;
       }
       const channel = target.closest("[data-channel]")?.dataset.channel;
@@ -961,6 +1044,12 @@ input {
     };
     return labels[channel] ?? String(channel);
   }
+  function labelForStatus(status) {
+    if (!status) return "Pending confirmation";
+    const normalized = String(status).trim();
+    if (!normalized) return "Pending confirmation";
+    return normalized.replace(/[-_]+/g, " ");
+  }
   function escapeHtml(value) {
     return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
@@ -1007,12 +1096,14 @@ input {
       PENDING: "pending",
       SUCCESS: "success",
       FAIL: "failed",
+      EXPIRE: "expired",
       CLOSE: "closed"
     },
     ready: {
       PENDING: "pending",
       SUCCESS: "success",
       FAIL: "failed",
+      EXPIRE: "expired",
       CLOSE: "closed"
     },
     pending: {
@@ -1020,10 +1111,12 @@ input {
       PENDING: "pending",
       SUCCESS: "success",
       FAIL: "failed",
+      EXPIRE: "expired",
       CLOSE: "closed"
     },
     success: { CLOSE: "closed" },
     failed: { CLOSE: "closed" },
+    expired: { CLOSE: "closed" },
     closed: {}
   };
   var CheckoutStateMachine = class {
@@ -1036,7 +1129,7 @@ input {
       return this.context.status;
     }
     isTerminal() {
-      return this.context.status === "success" || this.context.status === "failed" || this.context.status === "closed";
+      return this.context.status === "success" || this.context.status === "failed" || this.context.status === "expired" || this.context.status === "closed";
     }
   };
 
@@ -1075,8 +1168,13 @@ input {
       onRetry: () => void bootstrapActive(),
       onChannelSelected: () => {
         if (active?.bootstrap)
-          active.modal.renderCheckout(active.bootstrap, active.options.channels);
-      }
+          active.modal.renderCheckout(
+            active.bootstrap,
+            active.options.channels,
+            active.machine.context.status
+          );
+      },
+      onRefreshStatus: () => void refreshActiveStatus()
     });
     active = {
       options,
@@ -1099,7 +1197,7 @@ input {
     checkout.poller.stop();
     checkout.machine.send({ type: "CLOSE" });
     checkout.modal.destroy();
-    checkout.api.setCheckoutToken(void 0);
+    checkout.api?.setCheckoutToken(void 0);
     checkout.bootstrap = void 0;
     if (callCallback && !checkout.closeCalled) {
       checkout.closeCalled = true;
@@ -1108,7 +1206,7 @@ input {
   }
   async function bootstrapActive() {
     const checkout = active;
-    if (!checkout) return;
+    if (!checkout || !checkout.api) return;
     checkout.poller.stop();
     checkout.machine.send({ type: "LOAD" });
     checkout.modal.renderLoading();
@@ -1119,7 +1217,18 @@ input {
       checkout.machine.context.bootstrap = response.data;
       checkout.machine.context.checkoutToken = response.checkoutToken;
       checkout.api.setCheckoutToken(response.checkoutToken);
-      checkout.modal.renderCheckout(response.data, checkout.options.channels);
+      const hasAvailableChannel = checkout.modal.renderCheckout(
+        response.data,
+        checkout.options.channels
+      );
+      if (!hasAvailableChannel) {
+        checkout.machine.send({ type: "FAIL" });
+        callErrorOnce({
+          code: "no_available_channels",
+          message: "No available payment channels for this checkout."
+        });
+        return;
+      }
       handlePayload(response.data, false);
       const status = normalizeStatus(extractStatus(response.data));
       if (status === "unknown" || status === "pending") {
@@ -1136,15 +1245,48 @@ input {
   }
   function startPolling(delay) {
     const checkout = active;
-    if (!checkout) return;
+    if (!checkout || !checkout.api) return;
     checkout.poller.start(
-      async () => {
-        const response = await checkout.api.verify(checkout.reference);
-        return response.data;
-      },
+      () => verifyActive(checkout),
       (payload) => handlePayload(payload, true),
       delay
     );
+  }
+  async function refreshActiveStatus() {
+    const checkout = active;
+    if (!checkout || !checkout.api) return;
+    checkout.poller.stop();
+    checkout.modal.setStatusRefreshing(true);
+    try {
+      const payload = await verifyActive(checkout);
+      if (active !== checkout) return;
+      handlePayload(payload, true);
+      if (!checkout.machine.isTerminal()) {
+        startPolling(getPollDelay(payload));
+      }
+    } catch {
+      if (active === checkout && !checkout.machine.isTerminal()) {
+        startPolling(5e3);
+      }
+    } finally {
+      if (active === checkout) checkout.modal.setStatusRefreshing(false);
+    }
+  }
+  async function verifyActive(checkout) {
+    if (!checkout.api) return {};
+    if (checkout.modal.getSelectedChannel() === "bank-transfer" && extractBankTransfer(checkout.bootstrap)) {
+      try {
+        const response2 = await checkout.api.verifyBankTransfer(
+          checkout.reference
+        );
+        return response2.data;
+      } catch {
+        const response2 = await checkout.api.verify(checkout.reference);
+        return response2.data;
+      }
+    }
+    const response = await checkout.api.verify(checkout.reference);
+    return response.data;
   }
   function handlePayload(payload, fromPoll) {
     const checkout = active;
@@ -1161,6 +1303,16 @@ input {
       }
       return;
     }
+    if (status === "expired") {
+      checkout.poller.stop();
+      checkout.machine.send({ type: "EXPIRE" });
+      checkout.modal.renderExpired();
+      callErrorOnce({
+        code: "payment_expired",
+        message: "This checkout has expired. Please start a new payment."
+      });
+      return;
+    }
     if (status === "failed") {
       checkout.poller.stop();
       checkout.machine.send({ type: "FAIL" });
@@ -1173,7 +1325,15 @@ input {
     }
     if (fromPoll || status === "pending") {
       checkout.machine.send({ type: "PENDING" });
-      checkout.modal.renderPending(payload);
+      if (checkout.modal.getSelectedChannel() === "bank-transfer" && checkout.bootstrap && extractBankTransfer(checkout.bootstrap)) {
+        checkout.modal.renderCheckout(
+          checkout.bootstrap,
+          checkout.options.channels,
+          extractStatus(payload) ?? "pending"
+        );
+      } else {
+        checkout.modal.renderPending(payload);
+      }
       checkout.options.onPending?.(payload);
     } else {
       checkout.machine.send({ type: "READY" });
@@ -1189,12 +1349,28 @@ input {
     const modal = new CheckoutModal({
       container: options?.container,
       theme: options?.theme ?? {},
-      onClose: () => modal.destroy(),
+      onClose: (reason) => close(reason === "user"),
       onRetry: () => void 0,
-      onChannelSelected: () => void 0
+      onChannelSelected: () => void 0,
+      onRefreshStatus: () => void 0
     });
+    const machine = new CheckoutStateMachine({
+      reference: "",
+      theme: options?.theme ?? {},
+      status: "failed"
+    });
+    active = {
+      options: options ?? { reference: "" },
+      reference: "",
+      modal,
+      poller: new VerificationPoller(),
+      machine,
+      successCalled: false,
+      errorCalled: true,
+      closeCalled: false
+    };
     modal.mount();
-    modal.renderError(error);
+    modal.renderError(error, false);
   }
   function toErrorPayload(error) {
     if (error instanceof CheckoutError) return error.toPayload();

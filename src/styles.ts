@@ -194,6 +194,7 @@ input {
   font-size: 22px;
   font-weight: 750;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 .pi-copy,
 .pi-primary,
@@ -225,6 +226,30 @@ input {
   background: #fff;
   color: var(--pi-text);
   padding: 0 14px;
+}
+.pi-secondary:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.pi-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--pi-soft);
+  color: var(--pi-muted);
+  font-size: 13px;
+}
+.pi-status strong {
+  color: var(--pi-text);
+  font-weight: 700;
+  text-align: right;
+  text-transform: capitalize;
+}
+.pi-refresh {
+  width: 100%;
 }
 .pi-state {
   display: grid;

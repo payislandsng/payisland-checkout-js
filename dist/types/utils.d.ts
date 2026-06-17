@@ -9,7 +9,7 @@ export declare class CheckoutError extends Error {
 export declare function validateReference(reference: unknown): string;
 export declare function resolveApiBaseUrl(override?: string): string;
 export declare function getRequestId(headers: Headers): string | undefined;
-export declare function normalizeStatus(raw: unknown): "success" | "failed" | "pending" | "unknown";
+export declare function normalizeStatus(raw: unknown): "success" | "failed" | "expired" | "pending" | "unknown";
 export declare function extractTransaction(payload?: BootstrapPayload | VerificationPayload): TransactionPayload;
 export declare function extractStatus(payload?: BootstrapPayload | VerificationPayload): string | undefined;
 export declare function extractChannels(payload?: BootstrapPayload): PaymentChannel[];

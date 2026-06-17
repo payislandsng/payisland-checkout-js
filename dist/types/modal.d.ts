@@ -6,6 +6,7 @@ interface ModalOptions {
     onClose: (reason: CloseReason) => void;
     onRetry: () => void;
     onChannelSelected: (channel: PaymentChannel) => void;
+    onRefreshStatus: () => void;
 }
 export declare class CheckoutModal {
     private readonly host;
@@ -15,15 +16,19 @@ export declare class CheckoutModal {
     private countdownTimer?;
     private previousActiveElement?;
     private inline;
+    private refreshingStatus;
     constructor(options: ModalOptions);
     mount(): void;
     destroy(): void;
     renderLoading(): void;
-    renderError(error: CheckoutErrorPayload): void;
-    renderCheckout(payload: BootstrapPayload, allowedChannels?: PaymentChannel[]): void;
+    getSelectedChannel(): PaymentChannel | undefined;
+    renderError(error: CheckoutErrorPayload, retry?: boolean): void;
+    renderCheckout(payload: BootstrapPayload, allowedChannels?: PaymentChannel[], status?: string): boolean;
     renderPending(payload?: VerificationPayload): void;
     renderSuccess(): void;
     renderFailure(message: string): void;
+    renderExpired(): void;
+    setStatusRefreshing(refreshing: boolean): void;
     private renderShell;
     private setBody;
     private renderSummary;
