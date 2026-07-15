@@ -43,7 +43,11 @@ export function getBankTransferFields(details?: BankTransferPayload): {
       bank?.bank_name ??
       bank?.bankName ??
       "Bank transfer",
-    expiresAt: details?.expires_at ?? details?.expiresAt,
+    expiresAt:
+      details?.expires_at ??
+      details?.expiresAt ??
+      details?.expiry_date ??
+      details?.expiryDate,
   };
 }
 

@@ -115,7 +115,9 @@ export function extractStatus(
   payload?: BootstrapPayload | VerificationPayload,
 ): string | undefined {
   const transaction = extractTransaction(payload);
-  return payload?.status ?? transaction.status;
+  const payloadStatus =
+    typeof payload?.status === "string" ? payload.status : undefined;
+  return transaction.status ?? transaction.payment_status ?? payloadStatus;
 }
 
 export function extractChannels(payload?: BootstrapPayload): PaymentChannel[] {
@@ -140,7 +142,35 @@ export function extractChannels(payload?: BootstrapPayload): PaymentChannel[] {
 
 export function extractMerchant(payload?: BootstrapPayload): MerchantPayload {
   const transaction = extractTransaction(payload);
-  return payload?.merchant ?? transaction.merchant ?? {};
+  const business =
+    payload?.business ?? transaction.business ?? ({} as MerchantPayload);
+  return (
+    payload?.merchant ??
+    transaction.merchant ?? {
+      business_name:
+        payload?.business_name ??
+        transaction.business_name ??
+        payload?.merchant_name ??
+        transaction.merchant_name ??
+        business.business_name ??
+        business.merchant_name ??
+        business.name,
+      name:
+        payload?.merchant_name ??
+        transaction.merchant_name ??
+        business.name ??
+        business.business_name,
+      logo:
+        payload?.business_logo ??
+        payload?.merchant_logo ??
+        transaction.business_logo ??
+        transaction.merchant_logo ??
+        business.business_logo ??
+        business.merchant_logo ??
+        business.logo_url ??
+        business.logo,
+    }
+  );
 }
 
 export function extractCustomer(payload?: BootstrapPayload): CustomerPayload {
@@ -219,7 +249,11 @@ export function merchantDisplayName(
   fallback?: string,
 ): string {
   return (
-    merchant.business_name ?? merchant.name ?? fallback ?? "PayIsland merchant"
+    merchant.business_name ??
+    merchant.merchant_name ??
+    merchant.name ??
+    fallback ??
+    "PayIsland merchant"
   );
 }
 
@@ -227,7 +261,13 @@ export function logoUrl(
   merchant: MerchantPayload,
   fallback?: string,
 ): string | undefined {
-  return fallback ?? merchant.logo_url ?? merchant.logo;
+  return (
+    fallback ??
+    merchant.logo_url ??
+    merchant.business_logo ??
+    merchant.merchant_logo ??
+    merchant.logo
+  );
 }
 
 export function safeUrl(value?: string): string | undefined {

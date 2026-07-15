@@ -73,7 +73,8 @@ function extractTransaction(payload) {
 }
 function extractStatus(payload) {
   const transaction = extractTransaction(payload);
-  return payload?.status ?? transaction.status;
+  const payloadStatus = typeof payload?.status === "string" ? payload.status : void 0;
+  return transaction.status ?? transaction.payment_status ?? payloadStatus;
 }
 function extractChannels(payload) {
   const transaction = extractTransaction(payload);
@@ -90,7 +91,12 @@ function extractChannels(payload) {
 }
 function extractMerchant(payload) {
   const transaction = extractTransaction(payload);
-  return payload?.merchant ?? transaction.merchant ?? {};
+  const business = payload?.business ?? transaction.business ?? {};
+  return payload?.merchant ?? transaction.merchant ?? {
+    business_name: payload?.business_name ?? transaction.business_name ?? payload?.merchant_name ?? transaction.merchant_name ?? business.business_name ?? business.merchant_name ?? business.name,
+    name: payload?.merchant_name ?? transaction.merchant_name ?? business.name ?? business.business_name,
+    logo: payload?.business_logo ?? payload?.merchant_logo ?? transaction.business_logo ?? transaction.merchant_logo ?? business.business_logo ?? business.merchant_logo ?? business.logo_url ?? business.logo
+  };
 }
 function extractCustomer(payload) {
   const transaction = extractTransaction(payload);
@@ -142,7 +148,7 @@ function customerDisplayName(customer) {
   return name.trim();
 }
 function merchantDisplayName(merchant, fallback) {
-  return merchant.business_name ?? merchant.name ?? fallback ?? "PayIsland merchant";
+  return merchant.business_name ?? merchant.merchant_name ?? merchant.name ?? fallback ?? "PayIsland merchant";
 }
 function safeUrl(value) {
   if (!value) return void 0;
@@ -258,6 +264,15 @@ var ApiClient = class {
       { method: "GET" }
     );
   }
+  async updatePaymentChannel(reference, channel) {
+    return this.request(
+      `/api/v1/transactions/customer/update-payment-channel/${reference}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ channel })
+      }
+    );
+  }
   async request(path, init) {
     let response;
     try {
@@ -305,7 +320,7 @@ function getBankTransferFields(details) {
     accountNumber,
     accountName: details?.account_name ?? details?.accountName ?? details?.name ?? stringValue(accountRecord?.name) ?? stringValue(accountRecord?.account_name) ?? stringValue(accountRecord?.accountName) ?? "PayIsland checkout",
     bankName: details?.bank_name ?? details?.bankName ?? (typeof details?.bank === "string" ? details.bank : void 0) ?? bank?.name ?? bank?.bank_name ?? bank?.bankName ?? "Bank transfer",
-    expiresAt: details?.expires_at ?? details?.expiresAt
+    expiresAt: details?.expires_at ?? details?.expiresAt ?? details?.expiry_date ?? details?.expiryDate
   };
 }
 function stringValue(value) {
@@ -1075,6 +1090,9 @@ var CheckoutModal = class {
     button.disabled = refreshing;
     button.textContent = refreshing ? "Checking..." : "Refresh status";
   }
+  setChannelLoading(channel, loading) {
+    this.loadingChannel = loading ? channel : void 0;
+  }
   renderShell() {
     const merchantName = this.options.theme.merchantName ?? "PayIsland Checkout";
     const logo = this.options.theme.logoUrl ?? payisland_logo_dark_default;
@@ -1135,9 +1153,9 @@ var CheckoutModal = class {
     const merchant = extractMerchant(payload);
     const customer = extractCustomer(payload);
     const currency = transaction.currency ?? payload.currency ?? "NGN";
-    const total = transaction.total_amount ?? transaction.totalAmount ?? payload.total_amount ?? payload.totalAmount;
+    const total = transaction.total_amount ?? transaction.totalAmount ?? transaction.amount_to_be_paid ?? transaction.amountToBePaid ?? payload.total_amount ?? payload.totalAmount ?? payload.amount_to_be_paid ?? payload.amountToBePaid;
     const amount = transaction.amount ?? payload.amount;
-    const fee = transaction.fee ?? payload.fee;
+    const fee = transaction.fee ?? transaction.transaction_fee ?? payload.fee ?? payload.transaction_fee;
     const customerName = customerDisplayName(customer);
     const customerEmail = maskEmail(customer.email);
     const merchantName = merchantDisplayName(
@@ -1145,7 +1163,10 @@ var CheckoutModal = class {
       this.options.theme.merchantName
     );
     const reference = transaction.reference ?? payload.reference ?? "";
-    const totalLabel = formatMoney(total ?? amount, currency);
+    const totalLabel = formatMoney(
+      total ?? sumMoney(amount, fee) ?? amount,
+      currency
+    );
     return `
       <section class="pi-summary" aria-label="Transaction summary">
         <div class="pi-summary-hero">
@@ -1187,11 +1208,22 @@ var CheckoutModal = class {
     `;
   }
   renderChannel(payload, channel, status) {
+    if (channel && this.loadingChannel === channel) {
+      return `
+        <div class="pi-state pi-state-loading" role="status" aria-live="polite">
+          <div class="pi-spinner" aria-hidden="true"></div>
+          <h3 class="pi-state-title">Preparing ${escapeHtml(labelForChannel(channel))}</h3>
+          <p class="pi-message">Setting up this payment method...</p>
+        </div>
+      `;
+    }
     if (channel === "bank-transfer") {
       const bank = getBankTransferFields(extractBankTransfer(payload));
       const transaction = extractTransaction(payload);
       const currency = transaction.currency ?? payload.currency ?? "NGN";
-      const total = transaction.total_amount ?? transaction.totalAmount ?? payload.total_amount ?? payload.totalAmount ?? transaction.amount ?? payload.amount;
+      const amount = transaction.amount ?? payload.amount;
+      const fee = transaction.fee ?? transaction.transaction_fee ?? payload.fee ?? payload.transaction_fee;
+      const total = transaction.total_amount ?? transaction.totalAmount ?? transaction.amount_to_be_paid ?? transaction.amountToBePaid ?? payload.total_amount ?? payload.totalAmount ?? payload.amount_to_be_paid ?? payload.amountToBePaid ?? sumMoney(amount, fee) ?? amount;
       if (!bank)
         return `<div class="pi-unavailable">Bank transfer details are not available yet.</div>`;
       return `
@@ -1275,11 +1307,10 @@ var CheckoutModal = class {
     return unique.length > 0 ? unique : ["bank-transfer", "redirect", "card"];
   }
   isSupported(channel, payload) {
-    if (channel === "bank-transfer")
-      return Boolean(extractBankTransfer(payload));
-    if (channel === "redirect")
-      return Boolean(safeUrl(extractAuthorizationUrl(payload)));
-    return channel === "card" ? false : false;
+    if (channel === "bank-transfer") return true;
+    if (channel === "redirect") return true;
+    if (channel === "card" || channel === "mono") return true;
+    return false;
   }
   handleClick(event) {
     const target = event.target;
@@ -1368,6 +1399,16 @@ function labelForStatus(status) {
   const normalized = String(status).trim();
   if (!normalized) return "Pending confirmation";
   return normalized.replace(/[-_]+/g, " ");
+}
+function sumMoney(amount, fee) {
+  if (amount === void 0 || amount === null || amount === "")
+    return void 0;
+  if (fee === void 0 || fee === null || fee === "") return void 0;
+  const amountValue = Number(amount);
+  const feeValue = Number(fee);
+  if (!Number.isFinite(amountValue) || !Number.isFinite(feeValue))
+    return void 0;
+  return Math.round((amountValue + feeValue) * 100) / 100;
 }
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -1485,13 +1526,16 @@ function open(options) {
     theme: options.theme ?? {},
     onClose: (reason) => close(reason === "user"),
     onRetry: () => void bootstrapActive(),
-    onChannelSelected: () => {
-      if (active?.bootstrap)
+    onChannelSelected: (channel) => {
+      if (active?.bootstrap) {
+        active.machine.context.selectedChannel = channel;
         active.modal.renderCheckout(
           active.bootstrap,
           active.options.channels,
           active.machine.context.status
         );
+        void initializeActiveChannel(channel);
+      }
     },
     onPaymentStarted: () => beginActiveStatusChecks(),
     onRefreshStatus: () => void refreshActiveStatus()
@@ -1557,6 +1601,41 @@ async function bootstrapActive() {
     checkout.machine.send({ type: "FAIL" });
     checkout.modal.renderError(payload);
     callErrorOnce(payload);
+  }
+}
+async function initializeActiveChannel(channel) {
+  const checkout = active;
+  if (!checkout || !checkout.api || !checkout.bootstrap) return;
+  checkout.modal.setChannelLoading(channel, true);
+  checkout.modal.renderCheckout(
+    checkout.bootstrap,
+    checkout.options.channels,
+    checkout.machine.context.status
+  );
+  try {
+    const response = await checkout.api.updatePaymentChannel(
+      checkout.reference,
+      backendChannelFor(channel)
+    );
+    if (active !== checkout) return;
+    assertSuccessfulEnvelope(response.data);
+    checkout.bootstrap = mergeBootstrapPayload(
+      checkout.bootstrap,
+      response.data
+    );
+    checkout.machine.context.bootstrap = checkout.bootstrap;
+  } catch (error) {
+    const payload = toErrorPayload(error);
+    callErrorOnce(payload);
+  } finally {
+    if (active === checkout && checkout.bootstrap) {
+      checkout.modal.setChannelLoading(channel, false);
+      checkout.modal.renderCheckout(
+        checkout.bootstrap,
+        checkout.options.channels,
+        checkout.machine.context.status
+      );
+    }
   }
 }
 function beginActiveStatusChecks() {
@@ -1665,6 +1744,35 @@ function callErrorOnce(payload) {
   if (!checkout || checkout.errorCalled) return;
   checkout.errorCalled = true;
   checkout.options.onError?.(payload);
+}
+function backendChannelFor(channel) {
+  return channel === "redirect" ? "card" : channel;
+}
+function assertSuccessfulEnvelope(payload) {
+  const envelope = payload;
+  if (envelope.status !== false) return;
+  throw new CheckoutError({
+    code: "payment_channel_update_failed",
+    message: typeof envelope.message === "string" && envelope.message.trim() ? envelope.message : "We could not set up this payment method."
+  });
+}
+function mergeBootstrapPayload(current, update) {
+  const currentTransaction = extractTransaction(current);
+  const updateTransaction = extractTransaction(update);
+  const currentFee = currentTransaction.fee ?? currentTransaction.transaction_fee;
+  const updateAmountLooksPayableTotal = updateTransaction.amount !== void 0 && updateTransaction.amount_to_be_paid === void 0 && updateTransaction.amountToBePaid === void 0 && updateTransaction.transaction_fee === void 0 && updateTransaction.fee === void 0 && currentFee !== void 0;
+  const normalizedUpdate = updateAmountLooksPayableTotal ? {
+    ...updateTransaction,
+    amount: currentTransaction.amount,
+    amount_to_be_paid: updateTransaction.amount
+  } : updateTransaction;
+  return {
+    ...current,
+    data: {
+      ...currentTransaction,
+      ...normalizedUpdate
+    }
+  };
 }
 function renderValidationError(options, error) {
   const modal = new CheckoutModal({

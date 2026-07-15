@@ -54,6 +54,7 @@ export class CheckoutModal {
   private previousActiveElement?: Element | null;
   private inline = false;
   private refreshingStatus = false;
+  private loadingChannel?: PaymentChannel;
 
   constructor(options: ModalOptions) {
     this.options = options;
@@ -200,6 +201,10 @@ export class CheckoutModal {
     button.textContent = refreshing ? "Checking..." : "Refresh status";
   }
 
+  setChannelLoading(channel: PaymentChannel, loading: boolean): void {
+    this.loadingChannel = loading ? channel : undefined;
+  }
+
   private renderShell(): void {
     const merchantName =
       this.options.theme.merchantName ?? "PayIsland Checkout";
@@ -271,10 +276,18 @@ export class CheckoutModal {
     const total =
       transaction.total_amount ??
       transaction.totalAmount ??
+      transaction.amount_to_be_paid ??
+      transaction.amountToBePaid ??
       payload.total_amount ??
-      payload.totalAmount;
+      payload.totalAmount ??
+      payload.amount_to_be_paid ??
+      payload.amountToBePaid;
     const amount = transaction.amount ?? payload.amount;
-    const fee = transaction.fee ?? payload.fee;
+    const fee =
+      transaction.fee ??
+      transaction.transaction_fee ??
+      payload.fee ??
+      payload.transaction_fee;
     const customerName = customerDisplayName(customer);
     const customerEmail = maskEmail(customer.email);
     const merchantName = merchantDisplayName(
@@ -282,7 +295,10 @@ export class CheckoutModal {
       this.options.theme.merchantName,
     );
     const reference = transaction.reference ?? payload.reference ?? "";
-    const totalLabel = formatMoney(total ?? amount, currency);
+    const totalLabel = formatMoney(
+      total ?? sumMoney(amount, fee) ?? amount,
+      currency,
+    );
 
     return `
       <section class="pi-summary" aria-label="Transaction summary">
@@ -336,17 +352,37 @@ export class CheckoutModal {
     channel?: PaymentChannel,
     status?: string,
   ): string {
+    if (channel && this.loadingChannel === channel) {
+      return `
+        <div class="pi-state pi-state-loading" role="status" aria-live="polite">
+          <div class="pi-spinner" aria-hidden="true"></div>
+          <h3 class="pi-state-title">Preparing ${escapeHtml(labelForChannel(channel))}</h3>
+          <p class="pi-message">Setting up this payment method...</p>
+        </div>
+      `;
+    }
+
     if (channel === "bank-transfer") {
       const bank = getBankTransferFields(extractBankTransfer(payload));
       const transaction = extractTransaction(payload);
       const currency = transaction.currency ?? payload.currency ?? "NGN";
+      const amount = transaction.amount ?? payload.amount;
+      const fee =
+        transaction.fee ??
+        transaction.transaction_fee ??
+        payload.fee ??
+        payload.transaction_fee;
       const total =
         transaction.total_amount ??
         transaction.totalAmount ??
+        transaction.amount_to_be_paid ??
+        transaction.amountToBePaid ??
         payload.total_amount ??
         payload.totalAmount ??
-        transaction.amount ??
-        payload.amount;
+        payload.amount_to_be_paid ??
+        payload.amountToBePaid ??
+        sumMoney(amount, fee) ??
+        amount;
       if (!bank)
         return `<div class="pi-unavailable">Bank transfer details are not available yet.</div>`;
 
@@ -453,11 +489,10 @@ export class CheckoutModal {
     channel: PaymentChannel,
     payload: BootstrapPayload,
   ): boolean {
-    if (channel === "bank-transfer")
-      return Boolean(extractBankTransfer(payload));
-    if (channel === "redirect")
-      return Boolean(safeUrl(extractAuthorizationUrl(payload)));
-    return channel === "card" ? false : false;
+    if (channel === "bank-transfer") return true;
+    if (channel === "redirect") return true;
+    if (channel === "card" || channel === "mono") return true;
+    return false;
   }
 
   private handleClick(event: Event): void {
@@ -563,6 +598,17 @@ function labelForStatus(status?: string): string {
   const normalized = String(status).trim();
   if (!normalized) return "Pending confirmation";
   return normalized.replace(/[-_]+/g, " ");
+}
+
+function sumMoney(amount: unknown, fee: unknown): number | undefined {
+  if (amount === undefined || amount === null || amount === "")
+    return undefined;
+  if (fee === undefined || fee === null || fee === "") return undefined;
+  const amountValue = Number(amount);
+  const feeValue = Number(fee);
+  if (!Number.isFinite(amountValue) || !Number.isFinite(feeValue))
+    return undefined;
+  return Math.round((amountValue + feeValue) * 100) / 100;
 }
 
 function escapeHtml(value: unknown): string {

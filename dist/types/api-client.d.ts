@@ -9,5 +9,6 @@ export declare class ApiClient {
     verifyOtp(reference: string, body: Record<string, unknown>): Promise<ApiResponse<TransactionPayload>>;
     verify(reference: string): Promise<ApiResponse<VerificationPayload>>;
     verifyBankTransfer(reference: string): Promise<ApiResponse<VerificationPayload>>;
+    updatePaymentChannel(reference: string, channel: string): Promise<ApiResponse<BootstrapPayload>>;
     private request;
 }

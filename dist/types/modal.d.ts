@@ -18,6 +18,7 @@ export declare class CheckoutModal {
     private previousActiveElement?;
     private inline;
     private refreshingStatus;
+    private loadingChannel?;
     constructor(options: ModalOptions);
     mount(): void;
     destroy(): void;
@@ -30,6 +31,7 @@ export declare class CheckoutModal {
     renderFailure(message: string): void;
     renderExpired(): void;
     setStatusRefreshing(refreshing: boolean): void;
+    setChannelLoading(channel: PaymentChannel, loading: boolean): void;
     private renderShell;
     private setBody;
     private renderSummary;

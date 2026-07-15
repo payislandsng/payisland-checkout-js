@@ -296,6 +296,127 @@ describe("PayIslandCheckout", () => {
     });
   });
 
+  it("renders live bootstrap fee, total, merchant, and payment status aliases", async () => {
+    fetchMock(
+      mockJson({
+        status: true,
+        message: "",
+        data: {
+          reference: "PISL2607150000001222",
+          payment_status: "pending",
+          amount: "50",
+          transaction_fee: "0.92",
+          business_name: "Soladnet",
+          merchant_name: "Soladnet",
+          customer: {
+            first_name: "Abdulrasheed",
+            last_name: "Soladoye",
+          },
+        },
+        statusCode: 200,
+      }),
+    );
+
+    open({ reference: "PISL2607150000001222" });
+
+    await vi.waitFor(() => {
+      expect(shadowText()).toContain("₦50.92");
+      expect(shadowText()).toContain("Fee₦0.92");
+      expect(shadowText()).toContain("Soladnet");
+      expect(shadowText()).toContain("Abdulrasheed Soladoye");
+    });
+  });
+
+  it("initializes bank transfer details when the payer selects bank transfer", async () => {
+    const fetch = fetchMock(
+      mockJson({
+        status: true,
+        data: {
+          reference: "PISL2607150000001222",
+          payment_status: "pending",
+          amount: "50",
+          transaction_fee: "0.92",
+          business_name: "Soladnet",
+        },
+      }),
+      mockJson({
+        status: true,
+        message: "Payment initialized successfully",
+        data: {
+          authorization_url: null,
+          amount: "50.92",
+          reference: "PISL2607150000001222",
+          account_name: "Soladnet",
+          account_number: "1234567890",
+          bank_name: "PayIsland Bank",
+          expiry_date: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        },
+      }),
+    );
+
+    open({ reference: "PISL2607150000001222" });
+
+    await vi.waitFor(() => expect(shadowText()).toContain("Bank transfer"));
+    const bankTab = shadowButton("Bank transfer");
+    expect(bankTab.disabled).toBe(false);
+    bankTab.click();
+
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "https://ags.payislands.com/api/v1/transactions/customer/update-payment-channel/PISL2607150000001222",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ channel: "bank-transfer" }),
+        }),
+      );
+      expect(shadowText()).toContain("1234567890");
+      expect(shadowText()).toContain("PayIsland Bank");
+      expect(shadowText()).toContain("Transfer exactly ₦50.92");
+    });
+  });
+
+  it("initializes redirect using the card payment channel when selected", async () => {
+    const fetch = fetchMock(
+      mockJson({
+        status: true,
+        data: {
+          reference: "PISL2607150000001222",
+          payment_status: "pending",
+          amount: "50",
+          transaction_fee: "0.92",
+        },
+      }),
+      mockJson({
+        status: true,
+        message: "transaction updated successfully",
+        data: {
+          authorization_url:
+            "https://checkout.payislands.com/pay?reference=PISL2607150000001222",
+          amount: "50.92",
+          reference: "PISL2607150000001222",
+        },
+      }),
+    );
+
+    open({ reference: "PISL2607150000001222" });
+
+    await vi.waitFor(() => expect(shadowText()).toContain("Redirect"));
+    const redirectTab = shadowButton("Redirect");
+    expect(redirectTab.disabled).toBe(false);
+    redirectTab.click();
+
+    await vi.waitFor(() => {
+      expect(fetch.mock.calls[1][0]).toBe(
+        "https://ags.payislands.com/api/v1/transactions/customer/update-payment-channel/PISL2607150000001222",
+      );
+      expect(fetch.mock.calls[1][1]).toMatchObject({
+        method: "POST",
+        body: JSON.stringify({ channel: "card" }),
+      });
+      expect(shadowText()).toContain("Continue to payment");
+    });
+  });
+
   it("respects the merchant channel allow-list", async () => {
     fetchMock(
       mockJson({

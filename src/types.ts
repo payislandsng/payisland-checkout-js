@@ -51,6 +51,7 @@ export interface BootstrapPayload {
   transaction?: TransactionPayload;
   data?: TransactionPayload;
   merchant?: MerchantPayload;
+  business?: MerchantPayload;
   customer?: CustomerPayload;
   channels?: PaymentChannel[];
   payment_channels?: PaymentChannel[];
@@ -60,11 +61,19 @@ export interface BootstrapPayload {
   authorization_url?: string;
   authorizationUrl?: string;
   status?: string;
+  payment_status?: string;
   amount?: number | string;
   fee?: number | string;
+  transaction_fee?: number | string;
   total_amount?: number | string;
   totalAmount?: number | string;
+  amount_to_be_paid?: number | string;
+  amountToBePaid?: number | string;
   currency?: string;
+  business_name?: string;
+  merchant_name?: string;
+  business_logo?: string;
+  merchant_logo?: string;
   retry_after_ms?: number;
   poll_interval_ms?: number;
 }
@@ -72,17 +81,26 @@ export interface BootstrapPayload {
 export interface TransactionPayload extends Record<string, unknown> {
   reference?: string;
   status?: string;
+  payment_status?: string;
   amount?: number | string;
   fee?: number | string;
+  transaction_fee?: number | string;
   total_amount?: number | string;
   totalAmount?: number | string;
+  amount_to_be_paid?: number | string;
+  amountToBePaid?: number | string;
   currency?: string;
   merchant?: MerchantPayload;
+  business?: MerchantPayload;
   customer?: CustomerPayload;
   bank_transfer?: BankTransferPayload;
   bankTransfer?: BankTransferPayload;
   authorization_url?: string;
   authorizationUrl?: string;
+  business_name?: string;
+  merchant_name?: string;
+  business_logo?: string;
+  merchant_logo?: string;
   retry_after_ms?: number;
   poll_interval_ms?: number;
 }
@@ -98,8 +116,11 @@ export interface VerificationPayload extends Record<string, unknown> {
 export interface MerchantPayload {
   name?: string;
   business_name?: string;
+  merchant_name?: string;
   logo?: string;
   logo_url?: string;
+  business_logo?: string;
+  merchant_logo?: string;
 }
 
 export interface CustomerPayload {
@@ -122,6 +143,8 @@ export interface BankTransferPayload extends Record<string, unknown> {
   bank?: string | { name?: string; bank_name?: string; bankName?: string };
   expires_at?: string;
   expiresAt?: string;
+  expiry_date?: string;
+  expiryDate?: string;
   amount?: number | string;
 }
 

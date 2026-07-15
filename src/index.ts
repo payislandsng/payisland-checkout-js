@@ -76,13 +76,16 @@ export function open(options: PayIslandCheckoutOptions): void {
     theme: options.theme ?? {},
     onClose: (reason) => close(reason === "user"),
     onRetry: () => void bootstrapActive(),
-    onChannelSelected: () => {
-      if (active?.bootstrap)
+    onChannelSelected: (channel) => {
+      if (active?.bootstrap) {
+        active.machine.context.selectedChannel = channel;
         active.modal.renderCheckout(
           active.bootstrap,
           active.options.channels,
           active.machine.context.status,
         );
+        void initializeActiveChannel(channel);
+      }
     },
     onPaymentStarted: () => beginActiveStatusChecks(),
     onRefreshStatus: () => void refreshActiveStatus(),
@@ -159,6 +162,45 @@ async function bootstrapActive(): Promise<void> {
     checkout.machine.send({ type: "FAIL" });
     checkout.modal.renderError(payload);
     callErrorOnce(payload);
+  }
+}
+
+async function initializeActiveChannel(channel: string): Promise<void> {
+  const checkout = active;
+  if (!checkout || !checkout.api || !checkout.bootstrap) return;
+
+  checkout.modal.setChannelLoading(channel, true);
+  checkout.modal.renderCheckout(
+    checkout.bootstrap,
+    checkout.options.channels,
+    checkout.machine.context.status,
+  );
+
+  try {
+    const response = await checkout.api.updatePaymentChannel(
+      checkout.reference,
+      backendChannelFor(channel),
+    );
+    if (active !== checkout) return;
+
+    assertSuccessfulEnvelope(response.data);
+    checkout.bootstrap = mergeBootstrapPayload(
+      checkout.bootstrap,
+      response.data,
+    );
+    checkout.machine.context.bootstrap = checkout.bootstrap;
+  } catch (error) {
+    const payload = toErrorPayload(error);
+    callErrorOnce(payload);
+  } finally {
+    if (active === checkout && checkout.bootstrap) {
+      checkout.modal.setChannelLoading(channel, false);
+      checkout.modal.renderCheckout(
+        checkout.bootstrap,
+        checkout.options.channels,
+        checkout.machine.context.status,
+      );
+    }
   }
 }
 
@@ -293,6 +335,55 @@ function callErrorOnce(payload: CheckoutErrorPayload): void {
   if (!checkout || checkout.errorCalled) return;
   checkout.errorCalled = true;
   checkout.options.onError?.(payload);
+}
+
+function backendChannelFor(channel: string): string {
+  return channel === "redirect" ? "card" : channel;
+}
+
+function assertSuccessfulEnvelope(payload: BootstrapPayload): void {
+  const envelope = payload as Record<string, unknown>;
+  if (envelope.status !== false) return;
+
+  throw new CheckoutError({
+    code: "payment_channel_update_failed",
+    message:
+      typeof envelope.message === "string" && envelope.message.trim()
+        ? envelope.message
+        : "We could not set up this payment method.",
+  });
+}
+
+function mergeBootstrapPayload(
+  current: BootstrapPayload,
+  update: BootstrapPayload,
+): BootstrapPayload {
+  const currentTransaction = extractTransaction(current);
+  const updateTransaction = extractTransaction(update);
+  const currentFee =
+    currentTransaction.fee ?? currentTransaction.transaction_fee;
+  const updateAmountLooksPayableTotal =
+    updateTransaction.amount !== undefined &&
+    updateTransaction.amount_to_be_paid === undefined &&
+    updateTransaction.amountToBePaid === undefined &&
+    updateTransaction.transaction_fee === undefined &&
+    updateTransaction.fee === undefined &&
+    currentFee !== undefined;
+  const normalizedUpdate = updateAmountLooksPayableTotal
+    ? {
+        ...updateTransaction,
+        amount: currentTransaction.amount,
+        amount_to_be_paid: updateTransaction.amount,
+      }
+    : updateTransaction;
+
+  return {
+    ...current,
+    data: {
+      ...currentTransaction,
+      ...normalizedUpdate,
+    },
+  };
 }
 
 function renderValidationError(

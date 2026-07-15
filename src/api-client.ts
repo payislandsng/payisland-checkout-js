@@ -72,6 +72,19 @@ export class ApiClient {
     );
   }
 
+  async updatePaymentChannel(
+    reference: string,
+    channel: string,
+  ): Promise<ApiResponse<BootstrapPayload>> {
+    return this.request<BootstrapPayload>(
+      `/api/v1/transactions/customer/update-payment-channel/${reference}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ channel }),
+      },
+    );
+  }
+
   private async request<T>(
     path: string,
     init: RequestInit,
