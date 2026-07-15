@@ -1815,7 +1815,8 @@ function handlePayload(payload, fromPoll) {
   }
   if (fromPoll) {
     checkout.machine.send({ type: "PENDING" });
-    if (checkout.bootstrap) {
+    if (checkout.modal.getSelectedChannel() === "card") {
+    } else if (checkout.bootstrap) {
       checkout.modal.renderCheckout(
         checkout.bootstrap,
         checkout.options.channels,

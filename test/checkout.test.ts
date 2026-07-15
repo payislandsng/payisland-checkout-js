@@ -146,6 +146,34 @@ describe("PayIslandCheckout", () => {
     });
   });
 
+  it("keeps the hosted card iframe mounted while verification remains pending", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
+    const fetch = fetchMock(
+      mockJson({
+        reference: "PIST2605220000000117",
+        status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
+        poll_interval_ms: 1000,
+      }),
+      mockJson({ status: "pending", poll_interval_ms: 1000 }),
+    );
+
+    open({ reference: "PIST2605220000000117" });
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Enter card details securely"),
+    );
+    const frame = shadowIframe();
+
+    dispatchCardStarted();
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+    expect(shadowIframe()).toBe(frame);
+  });
+
   it("calls onSuccess once for a successful terminal state", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("open", vi.fn());

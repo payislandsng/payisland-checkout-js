@@ -368,7 +368,10 @@ function handlePayload(
 
   if (fromPoll) {
     checkout.machine.send({ type: "PENDING" });
-    if (checkout.bootstrap) {
+    if (checkout.modal.getSelectedChannel() === "card") {
+      // Keep the hosted card frame mounted while background verification runs.
+      // Re-rendering here recreates the iframe and interrupts in-frame 3DS/OTP flows.
+    } else if (checkout.bootstrap) {
       checkout.modal.renderCheckout(
         checkout.bootstrap,
         checkout.options.channels,
