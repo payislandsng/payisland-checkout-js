@@ -98,12 +98,13 @@ For best display, use a square or near-square merchant logo with a transparent o
 
 ## Channel Behavior
 
-Phase 1 does not collect raw card data. If card or another unfinished channel is present, the SDK shows it as unavailable.
+Phase 1 does not collect raw card data in merchant pages. Card payments continue through the secure PayIsland card checkout.
 
 Supported Phase 1 behavior:
 
+- Card initializes the `card` payment channel and opens the returned card checkout URL.
 - Bank transfer details render when returned by the bootstrap response.
-- `authorization_url` renders a safe “Continue to payment” button.
+- Selecting bank transfer initializes the `bank-transfer` payment channel and renders the generated account details.
 - Status checks run in the background after payer action using `retry_after_ms` or `poll_interval_ms` when provided.
 - Polling stops on close or terminal status.
 
@@ -128,7 +129,7 @@ Without this header, browsers will hide `x-checkout-token` from JavaScript even 
 
 ## Backend Notes
 
-- Ensure the bootstrap endpoint returns all data needed by the checkout UI: amount, fee, total, customer, merchant, available channels, bank transfer details, and redirect URL where applicable.
+- Ensure the bootstrap endpoint returns all data needed by the checkout UI: amount, fee, total, customer, merchant, available channels, bank transfer details, and card checkout URL where applicable.
 - Ensure `x-checkout-token` is exposed via CORS.
 - Ensure verification endpoints return normalized statuses.
 - Return `retry_after_ms` or `poll_interval_ms` where possible.

@@ -13,6 +13,7 @@ export declare function normalizeStatus(raw: unknown): "success" | "failed" | "e
 export declare function extractTransaction(payload?: BootstrapPayload | VerificationPayload): TransactionPayload;
 export declare function extractStatus(payload?: BootstrapPayload | VerificationPayload): string | undefined;
 export declare function extractChannels(payload?: BootstrapPayload): PaymentChannel[];
+export declare function normalizePaymentChannel(channel: PaymentChannel): PaymentChannel;
 export declare function extractMerchant(payload?: BootstrapPayload): MerchantPayload;
 export declare function extractCustomer(payload?: BootstrapPayload): CustomerPayload;
 export declare function extractBankTransfer(payload?: BootstrapPayload | TransactionPayload): BankTransferPayload | undefined;

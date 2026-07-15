@@ -111,9 +111,9 @@ describe("PayIslandCheckout", () => {
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to payment"),
+      expect(shadowText()).toContain("Continue to card payment"),
     );
-    shadowButton("Continue to payment").click();
+    shadowButton("Continue to card payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
@@ -146,9 +146,9 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117", onSuccess });
 
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to payment"),
+      expect(shadowText()).toContain("Continue to card payment"),
     );
-    shadowButton("Continue to payment").click();
+    shadowButton("Continue to card payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     await vi.advanceTimersByTimeAsync(5000);
@@ -200,7 +200,7 @@ describe("PayIslandCheckout", () => {
     await vi.waitFor(() => expect(onPending).toHaveBeenCalled());
 
     expect(shadowText()).toContain("Bank transfer");
-    expect(shadowText()).toContain("Redirect");
+    expect(shadowText()).toContain("Card");
   });
 
   it("does not poll before the payer chooses a payment method", async () => {
@@ -240,9 +240,9 @@ describe("PayIslandCheckout", () => {
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to payment"),
+      expect(shadowText()).toContain("Continue to card payment"),
     );
-    shadowButton("Continue to payment").click();
+    shadowButton("Continue to card payment").click();
     close(false);
     await vi.advanceTimersByTimeAsync(3000);
 
@@ -375,7 +375,7 @@ describe("PayIslandCheckout", () => {
     });
   });
 
-  it("initializes redirect using the card payment channel when selected", async () => {
+  it("initializes card payment when selected", async () => {
     const fetch = fetchMock(
       mockJson({
         status: true,
@@ -400,10 +400,8 @@ describe("PayIslandCheckout", () => {
 
     open({ reference: "PISL2607150000001222" });
 
-    await vi.waitFor(() => expect(shadowText()).toContain("Redirect"));
-    const redirectTab = shadowButton("Redirect");
-    expect(redirectTab.disabled).toBe(false);
-    redirectTab.click();
+    await vi.waitFor(() => expect(shadowText()).toContain("Card"));
+    shadowButton("Continue to card payment").click();
 
     await vi.waitFor(() => {
       expect(fetch.mock.calls[1][0]).toBe(
@@ -413,7 +411,7 @@ describe("PayIslandCheckout", () => {
         method: "POST",
         body: JSON.stringify({ channel: "card" }),
       });
-      expect(shadowText()).toContain("Continue to payment");
+      expect(shadowText()).toContain("Continue to card payment");
     });
   });
 
@@ -437,7 +435,7 @@ describe("PayIslandCheckout", () => {
     });
 
     await vi.waitFor(() => {
-      expect(shadowText()).toContain("Continue to payment");
+      expect(shadowText()).toContain("Continue to card payment");
       expect(shadowText()).not.toContain("1234567890");
       expect(shadowText()).not.toContain("Bank transfer");
     });
@@ -573,10 +571,10 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117" });
 
     await vi.waitFor(() => {
-      const button = shadowButton("Continue to payment");
-      expect(button.disabled).toBe(true);
+      const button = shadowButton("Continue to card payment");
+      expect(button.disabled).toBe(false);
     });
-    shadowButton("Continue to payment").click();
+    shadowButton("Continue to card payment").click();
 
     expect(openWindow).not.toHaveBeenCalled();
   });
@@ -599,9 +597,9 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117", onError });
 
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to payment"),
+      expect(shadowText()).toContain("Continue to card payment"),
     );
-    shadowButton("Continue to payment").click();
+    shadowButton("Continue to card payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => {
       expect(onError).toHaveBeenCalledWith(

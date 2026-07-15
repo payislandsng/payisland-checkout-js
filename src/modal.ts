@@ -1,5 +1,4 @@
 import { getBankTransferFields } from "./channels/bank-transfer";
-import { cardUnavailableMessage } from "./channels/card-placeholder";
 import { openRedirect } from "./channels/redirect";
 import { payIslandLogoDark, payIslandLogoLight } from "./brand-assets";
 import { styles } from "./styles";
@@ -21,6 +20,7 @@ import {
   formatMoney,
   maskEmail,
   merchantDisplayName,
+  normalizePaymentChannel,
   safeUrl,
 } from "./utils";
 
@@ -384,7 +384,18 @@ export class CheckoutModal {
         sumMoney(amount, fee) ??
         amount;
       if (!bank)
-        return `<div class="pi-unavailable">Bank transfer details are not available yet.</div>`;
+        return `
+          <section class="pi-redirect-card">
+            <div class="pi-redirect-icon" aria-hidden="true">↗</div>
+            <div>
+              <h3 class="pi-panel-title">Generate transfer details</h3>
+              <p class="pi-message">Generate a dedicated account number and transfer the exact amount.</p>
+            </div>
+            <button class="pi-primary" type="button" data-action="initialize-channel" data-channel-target="bank-transfer">
+              Continue to transfer
+            </button>
+          </section>
+        `;
 
       return `
         <section class="pi-bank-box" aria-label="Bank transfer details">
@@ -416,24 +427,24 @@ export class CheckoutModal {
       `;
     }
 
-    if (channel === "redirect" || safeUrl(extractAuthorizationUrl(payload))) {
+    if (channel === "card") {
       const url = safeUrl(extractAuthorizationUrl(payload));
       return `
         <section class="pi-redirect-card">
           <div class="pi-redirect-icon" aria-hidden="true">↗</div>
           <div>
-            <h3 class="pi-panel-title">Continue securely</h3>
-            <p class="pi-message">You will continue to a secure PayIsland payment page. Keep this checkout open while we confirm the payment.</p>
+            <h3 class="pi-panel-title">Card payment</h3>
+            <p class="pi-message">Continue to the secure PayIsland card checkout to enter card details and authorize payment.</p>
           </div>
-          <button class="pi-primary" type="button" data-redirect="${escapeAttr(url ?? "")}" ${url ? "" : "disabled"}>
-            Continue to payment
+          <button
+            class="pi-primary"
+            type="button"
+            ${url ? `data-card-redirect="${escapeAttr(url)}"` : 'data-action="initialize-channel" data-channel-target="card"'}
+          >
+            Continue to card payment
           </button>
         </section>
       `;
-    }
-
-    if (channel === "card") {
-      return `<div class="pi-unavailable">${escapeHtml(cardUnavailableMessage())}</div>`;
     }
 
     return `<div class="pi-unavailable">${escapeHtml(labelForChannel(channel ?? "This channel"))} is not available in this checkout yet.</div>`;
@@ -474,15 +485,16 @@ export class CheckoutModal {
     allowedChannels?: PaymentChannel[],
     payload?: BootstrapPayload,
   ): PaymentChannel[] {
-    const unique = [...new Set(channels)];
+    const unique = [...new Set(channels.map(normalizePaymentChannel))];
     if (allowedChannels?.length) {
+      const allowed = allowedChannels.map(normalizePaymentChannel);
       return unique.filter(
         (channel) =>
-          allowedChannels.includes(channel) &&
+          allowed.includes(channel) &&
           (payload ? this.isSupported(channel, payload) : true),
       );
     }
-    return unique.length > 0 ? unique : ["bank-transfer", "redirect", "card"];
+    return unique.length > 0 ? unique : ["card", "bank-transfer"];
   }
 
   private isSupported(
@@ -490,7 +502,6 @@ export class CheckoutModal {
     payload: BootstrapPayload,
   ): boolean {
     if (channel === "bank-transfer") return true;
-    if (channel === "redirect") return true;
     if (channel === "card" || channel === "mono") return true;
     return false;
   }
@@ -521,11 +532,21 @@ export class CheckoutModal {
       return;
     }
 
+    const initialize = target.closest<HTMLElement>(
+      '[data-action="initialize-channel"]',
+    )?.dataset.channelTarget;
+    if (initialize) {
+      this.selectedChannel = initialize;
+      this.options.onChannelSelected(initialize);
+      return;
+    }
+
     const channel =
       target.closest<HTMLElement>("[data-channel]")?.dataset.channel;
     if (channel) {
-      this.selectedChannel = channel;
-      this.options.onChannelSelected(channel);
+      const normalized = normalizePaymentChannel(channel);
+      this.selectedChannel = normalized;
+      this.options.onChannelSelected(normalized);
       return;
     }
 
@@ -536,11 +557,11 @@ export class CheckoutModal {
       return;
     }
 
-    const redirect =
-      target.closest<HTMLElement>("[data-redirect]")?.dataset.redirect;
+    const redirect = target.closest<HTMLElement>("[data-card-redirect]")
+      ?.dataset.cardRedirect;
     if (redirect) {
       openRedirect(redirect);
-      this.options.onPaymentStarted(this.selectedChannel ?? "redirect");
+      this.options.onPaymentStarted(this.selectedChannel ?? "card");
     }
   }
 
@@ -586,7 +607,7 @@ export class CheckoutModal {
 function labelForChannel(channel: PaymentChannel): string {
   const labels: Record<string, string> = {
     "bank-transfer": "Bank transfer",
-    redirect: "Redirect",
+    redirect: "Card",
     card: "Card",
     mono: "Mono",
   };

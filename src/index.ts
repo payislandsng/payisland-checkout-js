@@ -338,7 +338,7 @@ function callErrorOnce(payload: CheckoutErrorPayload): void {
 }
 
 function backendChannelFor(channel: string): string {
-  return channel === "redirect" ? "card" : channel;
+  return channel === "card" ? "card" : channel;
 }
 
 function assertSuccessfulEnvelope(payload: BootstrapPayload): void {

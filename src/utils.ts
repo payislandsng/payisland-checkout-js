@@ -129,15 +129,27 @@ export function extractChannels(payload?: BootstrapPayload): PaymentChannel[] {
     (transaction.channels as PaymentChannel[] | undefined);
 
   if (Array.isArray(candidates) && candidates.length > 0) {
-    return candidates.filter(
-      (channel): channel is PaymentChannel => typeof channel === "string",
-    );
+    const channels = candidates
+      .filter(
+        (channel): channel is PaymentChannel => typeof channel === "string",
+      )
+      .map(normalizePaymentChannel);
+    return [...new Set(channels)];
   }
 
   const channels: PaymentChannel[] = [];
+  if (extractAuthorizationUrl(payload)) channels.push("card");
   if (extractBankTransfer(payload)) channels.push("bank-transfer");
-  if (extractAuthorizationUrl(payload)) channels.push("redirect");
-  return channels.length > 0 ? channels : ["bank-transfer", "redirect", "card"];
+  return channels.length > 0 ? channels : ["card", "bank-transfer"];
+}
+
+export function normalizePaymentChannel(
+  channel: PaymentChannel,
+): PaymentChannel {
+  const normalized = String(channel).trim().toLowerCase();
+  if (normalized === "redirect" || normalized === "card-payment") return "card";
+  if (normalized === "bank_transfer") return "bank-transfer";
+  return channel;
 }
 
 export function extractMerchant(payload?: BootstrapPayload): MerchantPayload {
