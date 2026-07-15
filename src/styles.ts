@@ -434,6 +434,17 @@ button:focus-visible {
   font-size: 20px;
   font-weight: 900;
 }
+.pi-card-frame-card {
+  display: grid;
+  gap: 12px;
+}
+.pi-card-frame {
+  width: 100%;
+  min-height: 520px;
+  border: 1px solid var(--pi-border);
+  border-radius: 12px;
+  background: #fff;
+}
 .pi-state {
   display: grid;
   justify-items: center;

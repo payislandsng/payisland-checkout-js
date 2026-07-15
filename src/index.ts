@@ -38,6 +38,7 @@ interface ActiveCheckout {
   successCalled: boolean;
   errorCalled: boolean;
   closeCalled: boolean;
+  cardFrameMessageHandler?: (event: MessageEvent) => void;
 }
 
 let active: ActiveCheckout | undefined;
@@ -102,6 +103,10 @@ export function open(options: PayIslandCheckoutOptions): void {
     errorCalled: false,
     closeCalled: false,
   };
+  active.cardFrameMessageHandler = handleCardFrameMessage;
+  if (typeof window !== "undefined") {
+    window.addEventListener("message", active.cardFrameMessageHandler);
+  }
 
   modal.mount();
   void bootstrapActive();
@@ -114,6 +119,9 @@ export function close(callCallback = true): void {
   active = undefined;
   checkout.poller.stop();
   checkout.machine.send({ type: "CLOSE" });
+  if (typeof window !== "undefined" && checkout.cardFrameMessageHandler) {
+    window.removeEventListener("message", checkout.cardFrameMessageHandler);
+  }
   checkout.modal.destroy();
   checkout.api?.setCheckoutToken(undefined);
   checkout.bootstrap = undefined;
@@ -209,6 +217,50 @@ function beginActiveStatusChecks(): void {
   if (!checkout || !checkout.bootstrap || checkout.machine.isTerminal()) return;
 
   startPolling(getPollDelay(checkout.bootstrap));
+}
+
+function handleCardFrameMessage(event: MessageEvent): void {
+  const checkout = active;
+  if (!checkout || !isTrustedCardFrameOrigin(event.origin)) return;
+
+  const data = event.data as
+    | {
+        source?: string;
+        event?: string;
+        reference?: string;
+        message?: string;
+      }
+    | undefined;
+  if (data?.source !== "payisland-card-frame") return;
+  if (data.reference && data.reference !== checkout.reference) return;
+
+  if (data.event === "card.started") {
+    checkout.machine.context.selectedChannel = "card";
+    beginActiveStatusChecks();
+  }
+
+  if (data.event === "card.failed") {
+    callErrorOnce({
+      code: "card_payment_failed",
+      message: data.message || "This card payment could not be completed.",
+    });
+  }
+}
+
+function isTrustedCardFrameOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === "https:" &&
+        (url.hostname === "checkout.payislands.com" ||
+          url.hostname === "app-demo.payislands.com" ||
+          url.hostname === "checkout-demo.payislands.com")) ||
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1"
+    );
+  } catch {
+    return false;
+  }
 }
 
 function startPolling(delay: number): void {

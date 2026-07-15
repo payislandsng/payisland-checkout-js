@@ -1,5 +1,4 @@
 import { getBankTransferFields } from "./channels/bank-transfer";
-import { openRedirect } from "./channels/redirect";
 import { payIslandLogoDark, payIslandLogoLight } from "./brand-assets";
 import { styles } from "./styles";
 import type {
@@ -428,18 +427,38 @@ export class CheckoutModal {
     }
 
     if (channel === "card") {
-      const url = safeUrl(extractAuthorizationUrl(payload));
+      const frameUrl = buildCardFrameUrl(payload);
+      if (frameUrl) {
+        return `
+          <section class="pi-card-frame-card" aria-label="Secure card payment">
+            <div>
+              <h3 class="pi-panel-title">Card payment</h3>
+              <p class="pi-message">Enter card details securely with PayIsland.</p>
+            </div>
+            <iframe
+              class="pi-card-frame"
+              src="${escapeAttr(frameUrl)}"
+              title="Secure PayIsland card payment"
+              loading="lazy"
+              referrerpolicy="strict-origin-when-cross-origin"
+              sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-top-navigation-by-user-activation"
+            ></iframe>
+          </section>
+        `;
+      }
+
       return `
         <section class="pi-redirect-card">
           <div class="pi-redirect-icon" aria-hidden="true">↗</div>
           <div>
             <h3 class="pi-panel-title">Card payment</h3>
-            <p class="pi-message">Continue to the secure PayIsland card checkout to enter card details and authorize payment.</p>
+            <p class="pi-message">Set up a secure card payment session with PayIsland.</p>
           </div>
           <button
             class="pi-primary"
             type="button"
-            ${url ? `data-card-redirect="${escapeAttr(url)}"` : 'data-action="initialize-channel" data-channel-target="card"'}
+            data-action="initialize-channel"
+            data-channel-target="card"
           >
             Continue to card payment
           </button>
@@ -556,13 +575,6 @@ export class CheckoutModal {
       target.textContent = "Copied";
       return;
     }
-
-    const redirect = target.closest<HTMLElement>("[data-card-redirect]")
-      ?.dataset.cardRedirect;
-    if (redirect) {
-      openRedirect(redirect);
-      this.options.onPaymentStarted(this.selectedChannel ?? "card");
-    }
   }
 
   private handleKeydown(event: KeyboardEvent): void {
@@ -619,6 +631,31 @@ function labelForStatus(status?: string): string {
   const normalized = String(status).trim();
   if (!normalized) return "Pending confirmation";
   return normalized.replace(/[-_]+/g, " ");
+}
+
+function buildCardFrameUrl(payload: BootstrapPayload): string | undefined {
+  const transaction = extractTransaction(payload);
+  const reference =
+    typeof transaction.reference === "string" && transaction.reference.trim()
+      ? transaction.reference.trim()
+      : typeof payload.reference === "string" && payload.reference.trim()
+        ? payload.reference.trim()
+        : undefined;
+  if (!reference) return undefined;
+
+  const rawAuthorizationUrl = extractAuthorizationUrl(payload);
+  if (!rawAuthorizationUrl) return undefined;
+  const authorizationUrl = safeUrl(rawAuthorizationUrl);
+
+  const frame = new URL(
+    "/sdk/card-frame",
+    authorizationUrl ?? "https://checkout.payislands.com",
+  );
+  frame.searchParams.set("reference", reference);
+  if (typeof window !== "undefined" && window.location.origin) {
+    frame.searchParams.set("parent_origin", window.location.origin);
+  }
+  return frame.toString();
 }
 
 function sumMoney(amount: unknown, fee: unknown): number | undefined {

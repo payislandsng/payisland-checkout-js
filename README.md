@@ -102,7 +102,7 @@ Phase 1 does not collect raw card data in merchant pages. Card payments continue
 
 Supported Phase 1 behavior:
 
-- Card initializes the `card` payment channel and opens the returned card checkout URL.
+- Card initializes the `card` payment channel and embeds a PayIsland-hosted card frame from the returned checkout URL.
 - Bank transfer details render when returned by the bootstrap response.
 - Selecting bank transfer initializes the `bank-transfer` payment channel and renders the generated account details.
 - Status checks run in the background after payer action using `retry_after_ms` or `poll_interval_ms` when provided.
@@ -113,6 +113,7 @@ Supported Phase 1 behavior:
 
 - Never put PayIsland secret keys in browser code.
 - Never send merchant secret keys, API keys, PAN, CVV, PIN, OTP, or encrypted card payloads into this SDK.
+- Raw card fields are collected only inside a PayIsland-hosted frame. The SDK listens for frame lifecycle events and does not read card details.
 - Always verify the transaction server-side before fulfilling an order.
 - The checkout token is kept in memory only and cleared when checkout closes.
 - The SDK avoids logging sensitive payment values.

@@ -45,6 +45,30 @@ function shadowButton(label: string): HTMLButtonElement {
   return button;
 }
 
+function shadowIframe(): HTMLIFrameElement {
+  const frames = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-payisland-checkout]"),
+  ).flatMap((host) =>
+    Array.from(host.shadowRoot?.querySelectorAll("iframe") ?? []),
+  );
+  const frame = frames[0];
+  if (!frame) throw new Error("Iframe not found");
+  return frame;
+}
+
+function dispatchCardStarted(reference = "PIST2605220000000117"): void {
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: "https://checkout.payislands.com",
+      data: {
+        source: "payisland-card-frame",
+        event: "card.started",
+        reference,
+      },
+    }),
+  );
+}
+
 describe("PayIslandCheckout", () => {
   it("validates reference before bootstrapping", () => {
     const onError = vi.fn();
@@ -111,9 +135,9 @@ describe("PayIslandCheckout", () => {
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to card payment"),
+      expect(shadowText()).toContain("Enter card details securely"),
     );
-    shadowButton("Continue to card payment").click();
+    dispatchCardStarted();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
@@ -154,9 +178,9 @@ describe("PayIslandCheckout", () => {
     });
 
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to card payment"),
+      expect(shadowText()).toContain("Enter card details securely"),
     );
-    shadowButton("Continue to card payment").click();
+    dispatchCardStarted();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     await vi.advanceTimersByTimeAsync(5000);
@@ -291,9 +315,9 @@ describe("PayIslandCheckout", () => {
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to card payment"),
+      expect(shadowText()).toContain("Enter card details securely"),
     );
-    shadowButton("Continue to card payment").click();
+    dispatchCardStarted();
     close(false);
     await vi.advanceTimersByTimeAsync(3000);
 
@@ -462,7 +486,8 @@ describe("PayIslandCheckout", () => {
         method: "POST",
         body: JSON.stringify({ channel: "card" }),
       });
-      expect(shadowText()).toContain("Continue to card payment");
+      expect(shadowText()).toContain("Enter card details securely");
+      expect(shadowIframe().src).toContain("/sdk/card-frame");
     });
   });
 
@@ -486,7 +511,7 @@ describe("PayIslandCheckout", () => {
     });
 
     await vi.waitFor(() => {
-      expect(shadowText()).toContain("Continue to card payment");
+      expect(shadowText()).toContain("Enter card details securely");
       expect(shadowText()).not.toContain("1234567890");
       expect(shadowText()).not.toContain("Bank transfer");
     });
@@ -598,7 +623,7 @@ describe("PayIslandCheckout", () => {
     expect(fetch.mock.calls[1][1]).toMatchObject({ method: "GET" });
   });
 
-  it("requires HTTPS for payment redirects except local development URLs", async () => {
+  it("uses the hosted card frame instead of opening a redirect", async () => {
     expect(safeUrl("https://checkout.payislands.com/pay")).toBe(
       "https://checkout.payislands.com/pay",
     );
@@ -622,10 +647,11 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117" });
 
     await vi.waitFor(() => {
-      const button = shadowButton("Continue to card payment");
-      expect(button.disabled).toBe(false);
+      expect(shadowText()).toContain("Enter card details securely");
+      expect(shadowIframe().src).toContain(
+        "https://checkout.payislands.com/sdk/card-frame",
+      );
     });
-    shadowButton("Continue to card payment").click();
 
     expect(openWindow).not.toHaveBeenCalled();
   });
@@ -648,9 +674,9 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117", onError });
 
     await vi.waitFor(() =>
-      expect(shadowText()).toContain("Continue to card payment"),
+      expect(shadowText()).toContain("Enter card details securely"),
     );
-    shadowButton("Continue to card payment").click();
+    dispatchCardStarted();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => {
       expect(onError).toHaveBeenCalledWith(
