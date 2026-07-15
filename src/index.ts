@@ -84,6 +84,7 @@ export function open(options: PayIslandCheckoutOptions): void {
           active.machine.context.status,
         );
     },
+    onPaymentStarted: () => beginActiveStatusChecks(),
     onRefreshStatus: () => void refreshActiveStatus(),
   });
 
@@ -151,11 +152,6 @@ async function bootstrapActive(): Promise<void> {
     }
 
     handlePayload(response.data, false);
-
-    const status = normalizeStatus(extractStatus(response.data));
-    if (status === "unknown" || status === "pending") {
-      startPolling(getPollDelay(response.data));
-    }
   } catch (error) {
     if (active !== checkout) return;
     const payload = toErrorPayload(error);
@@ -164,6 +160,13 @@ async function bootstrapActive(): Promise<void> {
     checkout.modal.renderError(payload);
     callErrorOnce(payload);
   }
+}
+
+function beginActiveStatusChecks(): void {
+  const checkout = active;
+  if (!checkout || !checkout.bootstrap || checkout.machine.isTerminal()) return;
+
+  startPolling(getPollDelay(checkout.bootstrap));
 }
 
 function startPolling(delay: number): void {
@@ -268,17 +271,13 @@ function handlePayload(
     return;
   }
 
-  if (fromPoll || status === "pending") {
+  if (fromPoll) {
     checkout.machine.send({ type: "PENDING" });
-    if (
-      checkout.modal.getSelectedChannel() === "bank-transfer" &&
-      checkout.bootstrap &&
-      extractBankTransfer(checkout.bootstrap)
-    ) {
+    if (checkout.bootstrap) {
       checkout.modal.renderCheckout(
         checkout.bootstrap,
         checkout.options.channels,
-        extractStatus(payload) ?? "pending",
+        extractStatus(payload) ?? status,
       );
     } else {
       checkout.modal.renderPending(payload as VerificationPayload);
@@ -306,6 +305,7 @@ function renderValidationError(
     onClose: (reason) => close(reason === "user"),
     onRetry: () => undefined,
     onChannelSelected: () => undefined,
+    onPaymentStarted: () => undefined,
     onRefreshStatus: () => undefined,
   });
   const machine = new CheckoutStateMachine({

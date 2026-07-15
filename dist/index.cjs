@@ -125,10 +125,21 @@ function extractCustomer(payload) {
   return payload?.customer ?? transaction.customer ?? {};
 }
 function extractBankTransfer(payload) {
-  return payload?.bank_transfer ?? payload?.bankTransfer;
+  if (!payload) return void 0;
+  const direct = bankTransferCandidate(payload);
+  if (direct) return direct;
+  const transaction = extractTransaction(payload);
+  if (transaction !== payload) return bankTransferCandidate(transaction);
+  return void 0;
 }
 function extractAuthorizationUrl(payload) {
-  return payload?.authorization_url ?? payload?.authorizationUrl;
+  if (!payload) return void 0;
+  const direct = payload.authorization_url ?? payload.authorizationUrl;
+  if (direct) return direct;
+  const transaction = extractTransaction(payload);
+  if (transaction !== payload)
+    return transaction.authorization_url ?? transaction.authorizationUrl;
+  return void 0;
 }
 function getPollDelay(payload, fallback = 5e3) {
   const retryAfter = payload?.retry_after_ms;
@@ -175,6 +186,31 @@ function safeUrl(value) {
 }
 function isLocalHost(hostname) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+function bankTransferCandidate(payload) {
+  const record = payload;
+  const candidates = [
+    payload.bank_transfer,
+    payload.bankTransfer,
+    record.bank_account,
+    record.bankAccount,
+    record.virtual_account,
+    record.virtualAccount,
+    record.transfer_account,
+    record.transferAccount,
+    record.account_details,
+    record.accountDetails
+  ];
+  const nested = candidates.find(isBankTransferPayload);
+  if (nested) return nested;
+  return isBankTransferPayload(payload) ? payload : void 0;
+}
+function isBankTransferPayload(value) {
+  if (!value || typeof value !== "object") return false;
+  const record = value;
+  return Boolean(
+    record.account_number ?? record.accountNumber ?? record.account_no ?? record.accountNo ?? (record.account && typeof record.account === "object" && (record.account.number ?? record.account.account_number ?? record.account.accountNumber))
+  );
 }
 function friendlyApiError(status, requestId) {
   if (status === 404) {
@@ -288,14 +324,20 @@ async function parseJson(response) {
 
 // src/channels/bank-transfer.ts
 function getBankTransferFields(details) {
-  const accountNumber = details?.account_number ?? details?.accountNumber;
+  const account = details?.account;
+  const accountRecord = account && typeof account === "object" ? account : void 0;
+  const bank = details?.bank && typeof details.bank === "object" ? details.bank : void 0;
+  const accountNumber = details?.account_number ?? details?.accountNumber ?? details?.account_no ?? details?.accountNo ?? stringValue(accountRecord?.number) ?? stringValue(accountRecord?.account_number) ?? stringValue(accountRecord?.accountNumber);
   if (!accountNumber) return null;
   return {
     accountNumber,
-    accountName: details?.account_name ?? details?.accountName ?? "PayIsland checkout",
-    bankName: details?.bank_name ?? details?.bankName ?? "Bank transfer",
+    accountName: details?.account_name ?? details?.accountName ?? details?.name ?? stringValue(accountRecord?.name) ?? stringValue(accountRecord?.account_name) ?? stringValue(accountRecord?.accountName) ?? "PayIsland checkout",
+    bankName: details?.bank_name ?? details?.bankName ?? (typeof details?.bank === "string" ? details.bank : void 0) ?? bank?.name ?? bank?.bank_name ?? bank?.bankName ?? "Bank transfer",
     expiresAt: details?.expires_at ?? details?.expiresAt
   };
+}
+function stringValue(value) {
+  return typeof value === "string" && value.trim() ? value : void 0;
 }
 
 // src/channels/card-placeholder.ts
@@ -1284,6 +1326,8 @@ var CheckoutModal = class {
       '[data-action="refresh-status"]'
     );
     if (refreshStatus) {
+      if (this.selectedChannel)
+        this.options.onPaymentStarted(this.selectedChannel);
       this.options.onRefreshStatus();
       return;
     }
@@ -1300,7 +1344,10 @@ var CheckoutModal = class {
       return;
     }
     const redirect = target.closest("[data-redirect]")?.dataset.redirect;
-    if (redirect) openRedirect(redirect);
+    if (redirect) {
+      openRedirect(redirect);
+      this.options.onPaymentStarted(this.selectedChannel ?? "redirect");
+    }
   }
   handleKeydown(event) {
     if (event.key === "Escape") {
@@ -1474,6 +1521,7 @@ function open(options) {
           active.machine.context.status
         );
     },
+    onPaymentStarted: () => beginActiveStatusChecks(),
     onRefreshStatus: () => void refreshActiveStatus()
   });
   active = {
@@ -1530,10 +1578,6 @@ async function bootstrapActive() {
       return;
     }
     handlePayload(response.data, false);
-    const status = normalizeStatus(extractStatus(response.data));
-    if (status === "unknown" || status === "pending") {
-      startPolling(getPollDelay(response.data));
-    }
   } catch (error) {
     if (active !== checkout) return;
     const payload = toErrorPayload(error);
@@ -1542,6 +1586,11 @@ async function bootstrapActive() {
     checkout.modal.renderError(payload);
     callErrorOnce(payload);
   }
+}
+function beginActiveStatusChecks() {
+  const checkout = active;
+  if (!checkout || !checkout.bootstrap || checkout.machine.isTerminal()) return;
+  startPolling(getPollDelay(checkout.bootstrap));
 }
 function startPolling(delay) {
   const checkout = active;
@@ -1623,13 +1672,13 @@ function handlePayload(payload, fromPoll) {
     });
     return;
   }
-  if (fromPoll || status === "pending") {
+  if (fromPoll) {
     checkout.machine.send({ type: "PENDING" });
-    if (checkout.modal.getSelectedChannel() === "bank-transfer" && checkout.bootstrap && extractBankTransfer(checkout.bootstrap)) {
+    if (checkout.bootstrap) {
       checkout.modal.renderCheckout(
         checkout.bootstrap,
         checkout.options.channels,
-        extractStatus(payload) ?? "pending"
+        extractStatus(payload) ?? status
       );
     } else {
       checkout.modal.renderPending(payload);
@@ -1652,6 +1701,7 @@ function renderValidationError(options, error) {
     onClose: (reason) => close(reason === "user"),
     onRetry: () => void 0,
     onChannelSelected: () => void 0,
+    onPaymentStarted: () => void 0,
     onRefreshStatus: () => void 0
   });
   const machine = new CheckoutStateMachine({

@@ -32,6 +32,7 @@ interface ModalOptions {
   onClose: (reason: CloseReason) => void;
   onRetry: () => void;
   onChannelSelected: (channel: PaymentChannel) => void;
+  onPaymentStarted: (channel: PaymentChannel) => void;
   onRefreshStatus: () => void;
 }
 
@@ -479,6 +480,8 @@ export class CheckoutModal {
       '[data-action="refresh-status"]',
     );
     if (refreshStatus) {
+      if (this.selectedChannel)
+        this.options.onPaymentStarted(this.selectedChannel);
       this.options.onRefreshStatus();
       return;
     }
@@ -500,7 +503,10 @@ export class CheckoutModal {
 
     const redirect =
       target.closest<HTMLElement>("[data-redirect]")?.dataset.redirect;
-    if (redirect) openRedirect(redirect);
+    if (redirect) {
+      openRedirect(redirect);
+      this.options.onPaymentStarted(this.selectedChannel ?? "redirect");
+    }
   }
 
   private handleKeydown(event: KeyboardEvent): void {

@@ -109,13 +109,17 @@ export interface CustomerPayload {
   email?: string;
 }
 
-export interface BankTransferPayload {
+export interface BankTransferPayload extends Record<string, unknown> {
   account_number?: string;
   accountNumber?: string;
+  account_no?: string;
+  accountNo?: string;
   account_name?: string;
   accountName?: string;
+  name?: string;
   bank_name?: string;
   bankName?: string;
+  bank?: string | { name?: string; bank_name?: string; bankName?: string };
   expires_at?: string;
   expiresAt?: string;
   amount?: number | string;

@@ -85,7 +85,7 @@ GET /api/v1/transactions/gateway/pay/keys/:reference
 ```
 
 5. The SDK reads the `x-checkout-token` response header when available and keeps it in memory only.
-6. The SDK polls verification until PayIsland returns a terminal status:
+6. After the payer chooses a payment route or manually checks status, the SDK verifies payment in the background until PayIsland returns a terminal status:
 
 ```text
 POST /api/v1/transactions/gateway/transaction/verify/:reference
@@ -104,7 +104,7 @@ Supported Phase 1 behavior:
 
 - Bank transfer details render when returned by the bootstrap response.
 - `authorization_url` renders a safe “Continue to payment” button.
-- Pending transactions continue polling using `retry_after_ms` or `poll_interval_ms` when provided.
+- Status checks run in the background after payer action using `retry_after_ms` or `poll_interval_ms` when provided.
 - Polling stops on close or terminal status.
 
 ## Security Notes

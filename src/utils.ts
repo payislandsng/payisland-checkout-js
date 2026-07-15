@@ -151,13 +151,30 @@ export function extractCustomer(payload?: BootstrapPayload): CustomerPayload {
 export function extractBankTransfer(
   payload?: BootstrapPayload | TransactionPayload,
 ): BankTransferPayload | undefined {
-  return payload?.bank_transfer ?? payload?.bankTransfer;
+  if (!payload) return undefined;
+
+  const direct = bankTransferCandidate(payload);
+  if (direct) return direct;
+
+  const transaction = extractTransaction(payload);
+  if (transaction !== payload) return bankTransferCandidate(transaction);
+
+  return undefined;
 }
 
 export function extractAuthorizationUrl(
   payload?: BootstrapPayload | TransactionPayload,
 ): string | undefined {
-  return payload?.authorization_url ?? payload?.authorizationUrl;
+  if (!payload) return undefined;
+
+  const direct = payload.authorization_url ?? payload.authorizationUrl;
+  if (direct) return direct;
+
+  const transaction = extractTransaction(payload);
+  if (transaction !== payload)
+    return transaction.authorization_url ?? transaction.authorizationUrl;
+
+  return undefined;
 }
 
 export function getPollDelay(
@@ -229,6 +246,45 @@ export function safeUrl(value?: string): string | undefined {
 function isLocalHost(hostname: string): boolean {
   return (
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
+}
+
+function bankTransferCandidate(
+  payload: BootstrapPayload | TransactionPayload,
+): BankTransferPayload | undefined {
+  const record = payload as Record<string, unknown>;
+  const candidates = [
+    payload.bank_transfer,
+    payload.bankTransfer,
+    record.bank_account,
+    record.bankAccount,
+    record.virtual_account,
+    record.virtualAccount,
+    record.transfer_account,
+    record.transferAccount,
+    record.account_details,
+    record.accountDetails,
+  ];
+
+  const nested = candidates.find(isBankTransferPayload);
+  if (nested) return nested;
+
+  return isBankTransferPayload(payload) ? payload : undefined;
+}
+
+function isBankTransferPayload(value: unknown): value is BankTransferPayload {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return Boolean(
+    record.account_number ??
+    record.accountNumber ??
+    record.account_no ??
+    record.accountNo ??
+    (record.account &&
+      typeof record.account === "object" &&
+      ((record.account as Record<string, unknown>).number ??
+        (record.account as Record<string, unknown>).account_number ??
+        (record.account as Record<string, unknown>).accountNumber)),
   );
 }
 

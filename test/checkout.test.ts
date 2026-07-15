@@ -91,13 +91,15 @@ describe("PayIslandCheckout", () => {
     });
   });
 
-  it("reads x-checkout-token from bootstrap headers and sends it during verification", async () => {
+  it("reads x-checkout-token from bootstrap headers and sends it during verification after payer action", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
     const fetch = fetchMock(
       mockJson(
         {
           reference: "PIST2605220000000117",
           status: "pending",
+          authorization_url: "https://checkout.payislands.com/pay",
           poll_interval_ms: 1000,
         },
         { "x-checkout-token": "checkout-token-value" },
@@ -108,6 +110,10 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117" });
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Continue to payment"),
+    );
+    shadowButton("Continue to payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
@@ -118,11 +124,13 @@ describe("PayIslandCheckout", () => {
 
   it("calls onSuccess once for a successful terminal state", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
     const onSuccess = vi.fn();
     fetchMock(
       mockJson({
         reference: "PIST2605220000000117",
         status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
         poll_interval_ms: 1000,
       }),
       mockJson({
@@ -137,6 +145,10 @@ describe("PayIslandCheckout", () => {
 
     open({ reference: "PIST2605220000000117", onSuccess });
 
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Continue to payment"),
+    );
+    shadowButton("Continue to payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     await vi.advanceTimersByTimeAsync(5000);
@@ -161,13 +173,21 @@ describe("PayIslandCheckout", () => {
     });
   });
 
-  it("reports pending state while polling", async () => {
+  it("reports pending state after payer action while keeping checkout choices visible", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
     const onPending = vi.fn();
     fetchMock(
       mockJson({
         reference: "PIST2605220000000117",
         status: "pending",
+        channels: ["bank-transfer", "redirect"],
+        bank_transfer: {
+          account_number: "1234567890",
+          account_name: "PayIsland Test",
+          bank_name: "PayIsland Bank",
+        },
+        authorization_url: "https://checkout.payislands.com/pay",
         poll_interval_ms: 1000,
       }),
       mockJson({ status: "pending", poll_interval_ms: 1000 }),
@@ -175,16 +195,21 @@ describe("PayIslandCheckout", () => {
 
     open({ reference: "PIST2605220000000117", onPending });
 
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(shadowText()).toContain("Refresh status"));
+    shadowButton("Refresh status").click();
     await vi.waitFor(() => expect(onPending).toHaveBeenCalled());
+
+    expect(shadowText()).toContain("Bank transfer");
+    expect(shadowText()).toContain("Redirect");
   });
 
-  it("clears the polling timer when closed", async () => {
+  it("does not poll before the payer chooses a payment method", async () => {
     vi.useFakeTimers();
     const fetch = fetchMock(
       mockJson({
         reference: "PIST2605220000000117",
         status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
         poll_interval_ms: 1000,
       }),
       mockJson({ status: "pending" }),
@@ -193,6 +218,31 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117" });
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the polling timer when closed after payer action", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
+    const fetch = fetchMock(
+      mockJson({
+        reference: "PIST2605220000000117",
+        status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
+        poll_interval_ms: 1000,
+      }),
+      mockJson({ status: "pending" }),
+    );
+
+    open({ reference: "PIST2605220000000117" });
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Continue to payment"),
+    );
+    shadowButton("Continue to payment").click();
     close(false);
     await vi.advanceTimersByTimeAsync(3000);
 
@@ -210,6 +260,30 @@ describe("PayIslandCheckout", () => {
           account_number: "1234567890",
           account_name: "PayIsland Test",
           bank_name: "PayIsland Bank",
+        },
+      }),
+    );
+
+    open({ reference: "PIST2605220000000117" });
+
+    await vi.waitFor(() => {
+      expect(shadowText()).toContain("1234567890");
+      expect(shadowText()).toContain("PayIsland Bank");
+    });
+  });
+
+  it("renders bank transfer details nested inside transaction data", async () => {
+    fetchMock(
+      mockJson({
+        reference: "PIST2605220000000117",
+        data: {
+          amount: 1000,
+          total_amount: 1050,
+          bank_transfer: {
+            account_number: "1234567890",
+            account_name: "PayIsland Test",
+            bank_name: "PayIsland Bank",
+          },
         },
       }),
     );
@@ -314,7 +388,8 @@ describe("PayIslandCheckout", () => {
 
     open({ reference: "PIST2605220000000117", onPending });
 
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(shadowText()).toContain("Refresh status"));
+    shadowButton("Refresh status").click();
     await vi.waitFor(() => expect(onPending).toHaveBeenCalled());
 
     expect(shadowText()).toContain("1234567890");
@@ -343,7 +418,8 @@ describe("PayIslandCheckout", () => {
     open({ reference: "PIST2605220000000117" });
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(shadowText()).toContain("Refresh status"));
+    shadowButton("Refresh status").click();
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
     expect(String(fetch.mock.calls[1][0])).toContain(
@@ -386,11 +462,13 @@ describe("PayIslandCheckout", () => {
 
   it("handles expired status as a terminal state and stops polling", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
     const onError = vi.fn();
     const fetch = fetchMock(
       mockJson({
         reference: "PIST2605220000000117",
         status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
         poll_interval_ms: 1000,
       }),
       mockJson({ status: "expired", poll_interval_ms: 1000 }),
@@ -399,6 +477,10 @@ describe("PayIslandCheckout", () => {
 
     open({ reference: "PIST2605220000000117", onError });
 
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Continue to payment"),
+    );
+    shadowButton("Continue to payment").click();
     await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => {
       expect(onError).toHaveBeenCalledWith(

@@ -6,6 +6,7 @@ interface ModalOptions {
     onClose: (reason: CloseReason) => void;
     onRetry: () => void;
     onChannelSelected: (channel: PaymentChannel) => void;
+    onPaymentStarted: (channel: PaymentChannel) => void;
     onRefreshStatus: () => void;
 }
 export declare class CheckoutModal {
