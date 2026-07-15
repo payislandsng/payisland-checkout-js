@@ -1747,11 +1747,12 @@ function handlePayload(payload, fromPoll) {
   if (status === "success") {
     checkout.poller.stop();
     checkout.machine.send({ type: "SUCCESS" });
-    checkout.modal.renderSuccess();
     if (!checkout.successCalled) {
       checkout.successCalled = true;
       checkout.options.onSuccess?.(transaction);
     }
+    close(false);
+    navigateToReceiptPage(checkout, transaction);
     return;
   }
   if (status === "expired") {
@@ -1795,6 +1796,24 @@ function callErrorOnce(payload) {
   if (!checkout || checkout.errorCalled) return;
   checkout.errorCalled = true;
   checkout.options.onError?.(payload);
+}
+function navigateToReceiptPage(checkout, transaction) {
+  if (typeof window === "undefined") return;
+  const reference = typeof transaction.reference === "string" && transaction.reference.trim() ? transaction.reference : checkout.reference;
+  const url = new URL(
+    "/payment-status",
+    checkout.options.__receiptBaseUrl ?? "https://checkout.payislands.com"
+  );
+  url.searchParams.set("reference", reference);
+  url.searchParams.set("status", "success");
+  if (checkout.machine.context.checkoutToken) {
+    url.searchParams.set(
+      "checkout_token",
+      checkout.machine.context.checkoutToken
+    );
+  }
+  const navigate = checkout.options.__navigate ?? ((target) => window.location.assign(target));
+  navigate(url.toString());
 }
 function backendChannelFor(channel) {
   return channel === "card" ? "card" : channel;

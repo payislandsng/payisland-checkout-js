@@ -107,6 +107,7 @@ Supported Phase 1 behavior:
 - Selecting bank transfer initializes the `bank-transfer` payment channel and renders the generated account details.
 - Status checks run in the background after payer action using `retry_after_ms` or `poll_interval_ms` when provided.
 - Polling stops on close or terminal status.
+- Successful or paid transactions close the modal and navigate to the PayIsland payment-status page, which continues to the receipt.
 
 ## Security Notes
 

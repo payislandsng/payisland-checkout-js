@@ -15,6 +15,8 @@ export interface PayIslandCheckoutOptions {
     onError?: (error: CheckoutErrorPayload) => void;
     onClose?: () => void;
     __apiBaseUrl?: string;
+    __receiptBaseUrl?: string;
+    __navigate?: (url: string) => void;
 }
 export interface CheckoutErrorPayload {
     code: string;

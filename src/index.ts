@@ -283,11 +283,12 @@ function handlePayload(
   if (status === "success") {
     checkout.poller.stop();
     checkout.machine.send({ type: "SUCCESS" });
-    checkout.modal.renderSuccess();
     if (!checkout.successCalled) {
       checkout.successCalled = true;
       checkout.options.onSuccess?.(transaction);
     }
+    close(false);
+    navigateToReceiptPage(checkout, transaction);
     return;
   }
 
@@ -335,6 +336,35 @@ function callErrorOnce(payload: CheckoutErrorPayload): void {
   if (!checkout || checkout.errorCalled) return;
   checkout.errorCalled = true;
   checkout.options.onError?.(payload);
+}
+
+function navigateToReceiptPage(
+  checkout: ActiveCheckout,
+  transaction: TransactionPayload,
+): void {
+  if (typeof window === "undefined") return;
+
+  const reference =
+    typeof transaction.reference === "string" && transaction.reference.trim()
+      ? transaction.reference
+      : checkout.reference;
+  const url = new URL(
+    "/payment-status",
+    checkout.options.__receiptBaseUrl ?? "https://checkout.payislands.com",
+  );
+  url.searchParams.set("reference", reference);
+  url.searchParams.set("status", "success");
+  if (checkout.machine.context.checkoutToken) {
+    url.searchParams.set(
+      "checkout_token",
+      checkout.machine.context.checkoutToken,
+    );
+  }
+
+  const navigate =
+    checkout.options.__navigate ??
+    ((target: string) => window.location.assign(target));
+  navigate(url.toString());
 }
 
 function backendChannelFor(channel: string): string {

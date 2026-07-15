@@ -126,13 +126,17 @@ describe("PayIslandCheckout", () => {
     vi.useFakeTimers();
     vi.stubGlobal("open", vi.fn());
     const onSuccess = vi.fn();
+    const navigate = vi.fn();
     fetchMock(
-      mockJson({
-        reference: "PIST2605220000000117",
-        status: "pending",
-        authorization_url: "https://checkout.payislands.com/pay",
-        poll_interval_ms: 1000,
-      }),
+      mockJson(
+        {
+          reference: "PIST2605220000000117",
+          status: "pending",
+          authorization_url: "https://checkout.payislands.com/pay",
+          poll_interval_ms: 1000,
+        },
+        { "x-checkout-token": "checkout-token-value" },
+      ),
       mockJson({
         status: "success",
         transaction: { reference: "PIST2605220000000117", status: "success" },
@@ -143,7 +147,11 @@ describe("PayIslandCheckout", () => {
       }),
     );
 
-    open({ reference: "PIST2605220000000117", onSuccess });
+    open({
+      reference: "PIST2605220000000117",
+      onSuccess,
+      __navigate: navigate,
+    });
 
     await vi.waitFor(() =>
       expect(shadowText()).toContain("Continue to card payment"),
@@ -154,6 +162,49 @@ describe("PayIslandCheckout", () => {
     await vi.advanceTimersByTimeAsync(5000);
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-payisland-checkout]")).toBeNull();
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(
+      "https://checkout.payislands.com/payment-status?reference=PIST2605220000000117&status=success&checkout_token=checkout-token-value",
+    );
+  });
+
+  it("closes and navigates to receipt status when bootstrap returns paid", async () => {
+    const onSuccess = vi.fn();
+    const navigate = vi.fn();
+    fetchMock(
+      mockJson({
+        status: true,
+        message: "Transaction already completed",
+        data: {
+          reference: "PISL2607150000001226",
+          payment_status: "paid",
+          amount: "50",
+          amount_paid: "51.99",
+          transaction_fee: "1.99",
+        },
+      }),
+    );
+
+    open({
+      reference: "PISL2607150000001226",
+      onSuccess,
+      __navigate: navigate,
+    });
+
+    await vi.waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reference: "PISL2607150000001226",
+          payment_status: "paid",
+        }),
+      );
+    });
+
+    expect(document.querySelector("[data-payisland-checkout]")).toBeNull();
+    expect(navigate).toHaveBeenCalledWith(
+      "https://checkout.payislands.com/payment-status?reference=PISL2607150000001226&status=success",
+    );
   });
 
   it("calls onError for a failed terminal state", async () => {
