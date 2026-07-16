@@ -57,12 +57,20 @@ function shadowIframe(): HTMLIFrameElement {
 }
 
 function dispatchCardStarted(reference = "PIST2605220000000117"): void {
+  dispatchCardFrameEvent("card.started", reference);
+}
+
+function dispatchCardFinished(reference = "PIST2605220000000117"): void {
+  dispatchCardFrameEvent("card.finished", reference);
+}
+
+function dispatchCardFrameEvent(event: string, reference: string): void {
   window.dispatchEvent(
     new MessageEvent("message", {
       origin: "https://checkout.payislands.com",
       data: {
         source: "payisland-card-frame",
-        event: "card.started",
+        event,
         reference,
       },
     }),
@@ -115,7 +123,32 @@ describe("PayIslandCheckout", () => {
     });
   });
 
-  it("reads x-checkout-token from bootstrap headers and sends it during verification after payer action", async () => {
+  it("does not start parent verification while card or OTP is still in-frame", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("open", vi.fn());
+    const fetch = fetchMock(
+      mockJson({
+        reference: "PIST2605220000000117",
+        status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
+        poll_interval_ms: 1000,
+      }),
+      mockJson({ status: "pending", poll_interval_ms: 1000 }),
+    );
+
+    open({ reference: "PIST2605220000000117" });
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(shadowText()).toContain("Enter card details securely"),
+    );
+    dispatchCardStarted();
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads x-checkout-token from bootstrap headers and sends it during final card verification", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("open", vi.fn());
     const fetch = fetchMock(
@@ -138,7 +171,7 @@ describe("PayIslandCheckout", () => {
       expect(shadowText()).toContain("Enter card details securely"),
     );
     dispatchCardStarted();
-    await vi.advanceTimersByTimeAsync(1000);
+    dispatchCardFinished();
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
     expect(fetch.mock.calls[1][1].headers).toMatchObject({
@@ -167,8 +200,7 @@ describe("PayIslandCheckout", () => {
     );
     const frame = shadowIframe();
 
-    dispatchCardStarted();
-    await vi.advanceTimersByTimeAsync(1000);
+    dispatchCardFinished();
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 
     expect(shadowIframe()).toBe(frame);
@@ -208,8 +240,7 @@ describe("PayIslandCheckout", () => {
     await vi.waitFor(() =>
       expect(shadowText()).toContain("Enter card details securely"),
     );
-    dispatchCardStarted();
-    await vi.advanceTimersByTimeAsync(1000);
+    dispatchCardFinished();
     await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     await vi.advanceTimersByTimeAsync(5000);
 
@@ -704,8 +735,7 @@ describe("PayIslandCheckout", () => {
     await vi.waitFor(() =>
       expect(shadowText()).toContain("Enter card details securely"),
     );
-    dispatchCardStarted();
-    await vi.advanceTimersByTimeAsync(1000);
+    dispatchCardFinished();
     await vi.waitFor(() => {
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ code: "payment_expired" }),

@@ -236,7 +236,13 @@ function handleCardFrameMessage(event: MessageEvent): void {
 
   if (data.event === "card.started") {
     checkout.machine.context.selectedChannel = "card";
-    beginActiveStatusChecks();
+    checkout.poller.stop();
+  }
+
+  if (data.event === "card.finished") {
+    checkout.machine.context.selectedChannel = "card";
+    checkout.poller.stop();
+    void verifyCardFrameCompletion(checkout);
   }
 
   if (data.event === "card.failed") {
@@ -244,6 +250,19 @@ function handleCardFrameMessage(event: MessageEvent): void {
       code: "card_payment_failed",
       message: data.message || "This card payment could not be completed.",
     });
+  }
+}
+
+async function verifyCardFrameCompletion(
+  checkout: ActiveCheckout,
+): Promise<void> {
+  try {
+    const payload = await verifyActive(checkout);
+    if (active !== checkout) return;
+    handlePayload(payload, true);
+  } catch (error) {
+    if (active !== checkout) return;
+    callErrorOnce(toErrorPayload(error));
   }
 }
 

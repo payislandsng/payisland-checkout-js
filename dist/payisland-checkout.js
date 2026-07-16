@@ -1743,13 +1743,28 @@ button:focus-visible {
     if (data.reference && data.reference !== checkout.reference) return;
     if (data.event === "card.started") {
       checkout.machine.context.selectedChannel = "card";
-      beginActiveStatusChecks();
+      checkout.poller.stop();
+    }
+    if (data.event === "card.finished") {
+      checkout.machine.context.selectedChannel = "card";
+      checkout.poller.stop();
+      void verifyCardFrameCompletion(checkout);
     }
     if (data.event === "card.failed") {
       callErrorOnce({
         code: "card_payment_failed",
         message: data.message || "This card payment could not be completed."
       });
+    }
+  }
+  async function verifyCardFrameCompletion(checkout) {
+    try {
+      const payload = await verifyActive(checkout);
+      if (active !== checkout) return;
+      handlePayload(payload, true);
+    } catch (error) {
+      if (active !== checkout) return;
+      callErrorOnce(toErrorPayload(error));
     }
   }
   function isTrustedCardFrameOrigin(origin) {
