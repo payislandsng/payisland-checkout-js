@@ -1015,6 +1015,12 @@ button:focus-visible {
       this.renderShell();
       this.focusFirst();
     }
+    ownsCardFrame(source) {
+      const frame = this.root.querySelector(
+        "iframe.pi-card-frame"
+      );
+      return Boolean(frame?.contentWindow && source === frame.contentWindow);
+    }
     destroy() {
       this.stopCountdown();
       this.host.remove();
@@ -1737,10 +1743,11 @@ button:focus-visible {
   }
   function handleCardFrameMessage(event) {
     const checkout = active;
-    if (!checkout || !isTrustedCardFrameOrigin(event.origin)) return;
+    if (!checkout || !isTrustedCardFrameOrigin(event.origin) || !checkout.modal.ownsCardFrame(event.source))
+      return;
     const data = event.data;
     if (data?.source !== "payisland-card-frame") return;
-    if (data.reference && data.reference !== checkout.reference) return;
+    if (data.reference !== checkout.reference) return;
     if (data.event === "card.started") {
       checkout.machine.context.selectedChannel = "card";
       checkout.poller.stop();

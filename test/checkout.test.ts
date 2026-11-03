@@ -53,6 +53,9 @@ function shadowIframe(): HTMLIFrameElement {
   );
   const frame = frames[0];
   if (!frame) throw new Error("Iframe not found");
+  // jsdom does not create browsing contexts for iframes inside a shadow root.
+  if (!frame.contentWindow)
+    Object.defineProperty(frame, "contentWindow", { value: {} });
   return frame;
 }
 
@@ -68,6 +71,7 @@ function dispatchCardFrameEvent(event: string, reference: string): void {
   window.dispatchEvent(
     new MessageEvent("message", {
       origin: "https://checkout.payislands.com",
+      source: shadowIframe().contentWindow,
       data: {
         source: "payisland-card-frame",
         event,
@@ -177,6 +181,69 @@ describe("PayIslandCheckout", () => {
     expect(fetch.mock.calls[1][1].headers).toMatchObject({
       "x-checkout-token": "checkout-token-value",
     });
+  });
+
+  it("ignores delayed completion messages from a replaced frame for the same transaction", async () => {
+    const onSuccess = vi.fn();
+    const bootstrapResponse = () =>
+      mockJson({
+        reference: "PIST2605220000000117",
+        status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
+      });
+    const mock = fetchMock(bootstrapResponse(), bootstrapResponse());
+    open({ reference: "PIST2605220000000117", onSuccess });
+    await vi.waitFor(() => expect(shadowIframe()).toBeTruthy());
+    const staleWindow = shadowIframe().contentWindow;
+    close();
+    open({ reference: "PIST2605220000000117", onSuccess });
+    await vi.waitFor(() => expect(shadowIframe()).toBeTruthy());
+    const before = mock.mock.calls.length;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin: "https://checkout.payislands.com",
+        source: staleWindow,
+        data: {
+          source: "payisland-card-frame",
+          event: "card.finished",
+          reference: "PIST2605220000000117",
+        },
+      }),
+    );
+    await Promise.resolve();
+    expect(mock).toHaveBeenCalledTimes(before);
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("ignores completion events with missing references, wrong references or missing frame identity", async () => {
+    const fetch = fetchMock(
+      mockJson({
+        reference: "PIST2605220000000117",
+        status: "pending",
+        authorization_url: "https://checkout.payislands.com/pay",
+      }),
+    );
+    open({ reference: "PIST2605220000000117" });
+    await vi.waitFor(() => expect(shadowIframe()).toBeTruthy());
+    for (const [reference, source] of [
+      [undefined, shadowIframe().contentWindow],
+      ["other", shadowIframe().contentWindow],
+      ["PIST2605220000000117", null],
+    ] as const) {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: "https://checkout.payislands.com",
+          source,
+          data: {
+            source: "payisland-card-frame",
+            event: "card.finished",
+            reference,
+          },
+        }),
+      );
+    }
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the hosted card iframe mounted while verification remains pending", async () => {

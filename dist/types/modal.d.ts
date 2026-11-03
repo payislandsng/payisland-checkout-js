@@ -21,6 +21,7 @@ export declare class CheckoutModal {
     private loadingChannel?;
     constructor(options: ModalOptions);
     mount(): void;
+    ownsCardFrame(source: MessageEventSource | null): boolean;
     destroy(): void;
     renderLoading(): void;
     getSelectedChannel(): PaymentChannel | undefined;
