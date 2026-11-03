@@ -221,7 +221,12 @@ function beginActiveStatusChecks(): void {
 
 function handleCardFrameMessage(event: MessageEvent): void {
   const checkout = active;
-  if (!checkout || !isTrustedCardFrameOrigin(event.origin)) return;
+  if (
+    !checkout ||
+    !isTrustedCardFrameOrigin(event.origin) ||
+    !checkout.modal.ownsCardFrame(event.source)
+  )
+    return;
 
   const data = event.data as
     | {
@@ -232,7 +237,7 @@ function handleCardFrameMessage(event: MessageEvent): void {
       }
     | undefined;
   if (data?.source !== "payisland-card-frame") return;
-  if (data.reference && data.reference !== checkout.reference) return;
+  if (data.reference !== checkout.reference) return;
 
   if (data.event === "card.started") {
     checkout.machine.context.selectedChannel = "card";

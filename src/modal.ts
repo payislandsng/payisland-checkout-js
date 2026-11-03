@@ -71,6 +71,13 @@ export class CheckoutModal {
     this.focusFirst();
   }
 
+  ownsCardFrame(source: MessageEventSource | null): boolean {
+    const frame = this.root.querySelector<HTMLIFrameElement>(
+      "iframe.pi-card-frame",
+    );
+    return Boolean(frame?.contentWindow && source === frame.contentWindow);
+  }
+
   destroy(): void {
     this.stopCountdown();
     this.host.remove();

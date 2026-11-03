@@ -1,0 +1,9 @@
+# Attempt-bound hosted card authentication
+
+The public SDK delegates PAN capture, OTP, 3DS and resend to the hosted checkout iframe. `ApiClient.submitPayment/verifyOtp` are unused internal seams; the SDK does not duplicate the hosted attempt store or receive card/token material. The companion hosted checkout PR retains the server-issued `payment_execution_reference` per attempt and submits it for continuations. Deploy that hosted change and PR #329's attempt-bound challenge/callback support before release.
+
+This change requires both the active iframe WindowProxy and the exact checkout reference on frame messages, in addition to the existing origin check. A delayed same-origin message from a closed/replaced iframe, an unrelated window, or a missing/wrong transaction reference cannot interrupt the current checkout. A current-frame completion remains a hint: the parent independently queries transaction status and does not treat browser claims as proof of payment. Legacy transaction authentication remains owned by the frame; no attempt reference is required in parent messages.
+
+Validation: 27 Vitest tests pass (including delayed old-frame completion and missing/wrong context), TypeScript/typecheck passes, build passes, changed-file Prettier check passes. Existing successful completion, pending polling, OTP ownership, token-header and once-only success callback tests remain passing. jsdom cannot create browsing contexts for shadow-root iframes, so the test helper assigns each test iframe a distinct WindowProxy identity fixture; production code has no null-source bypass.
+
+Real issuer/3DS redirects, production CSP/CDN compatibility and client rollout remain release gates. No release/version publish, deployment, backend flag change or financial request was performed. Keep this PR draft.
