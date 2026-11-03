@@ -7,3 +7,5 @@ This change requires both the active iframe WindowProxy and the exact checkout r
 Validation: 27 Vitest tests pass (including delayed old-frame completion and missing/wrong context), TypeScript/typecheck passes, build passes, changed-file Prettier check passes. Existing successful completion, pending polling, OTP ownership, token-header and once-only success callback tests remain passing. jsdom cannot create browsing contexts for shadow-root iframes, so the test helper assigns each test iframe a distinct WindowProxy identity fixture; production code has no null-source bypass.
 
 Real issuer/3DS redirects, production CSP/CDN compatibility and client rollout remain release gates. No release/version publish, deployment, backend flag change or financial request was performed. Keep this PR draft.
+
+The repository tracks distributable bundles. The successful build outputs are included in this draft (CJS/ESM/IIFE/minified bundles, their maps and the modal declaration), matching the existing repository convention. No npm/CDN publication was performed.
